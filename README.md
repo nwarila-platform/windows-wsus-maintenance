@@ -43,6 +43,13 @@ pwsh -NoProfile -File ./build.ps1 -Task All
 `build/Invoke-WsusMaintenance.Functions.ps1`, and runs the smoke scripts. CI runs the same gate on
 Windows PowerShell 5.1.
 
+The live lane (`.github/workflows/live-lane.yaml`, not a required check) installs SQL Server 2022
+Express and the WSUS role on a hosted Windows runner and runs the built script there as SYSTEM
+through a scheduled task. Once the workflow is on the default branch, start it from the Actions tab ("Live lane", "Run
+workflow") or with `gh workflow run live-lane.yaml`; the first run is started with `-f record-pins=true` to record the
+SHA-256 pins of the SQL Server Express downloads, which are then committed to the workflow. Pull
+requests that change the lane run it too.
+
 ## Releases
 
 Tags matching `v*` publish a GitHub Release from a sealed build that has passed analysis, tests and

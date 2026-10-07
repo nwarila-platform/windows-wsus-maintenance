@@ -9,8 +9,9 @@ repository itself.
 The decided behaviour and defaults are stated here and in the repository's architecture decision
 records ([decision-records](decision-records/README.md)).
 
-Status date: 2026-10-07 (M0 to M10 complete: release one is built and its gate is green; what
-only a live server can prove is listed in section 12, by the lane that will prove it).
+Status date: 2026-10-07 (M0 to M10 complete: release one is built and its gate is green; M11,
+the live lane, is prepared but has not run on GitHub yet; what only a live server can prove is
+listed in section 12, by the lane that will prove it).
 
 ---
 
@@ -177,9 +178,20 @@ Lessons already learned in this code base:
   artifact, and the smoke scripts passing. `build.ps1` loads the newest Pester installed (6.1.0
   on the development host); CI pins Pester 5.7.1, and the suite is checked under both.
 - **CI** (`.github/workflows/ci.yaml`): workflow lint, workflow security scan, secret scan, an
-  analyzer SARIF upload, and the full build on `windows-latest` under Windows PowerShell 5.1. A
-  runner lane will install SQL Server Express and WSUS on the hosted runner and run the built
-  script against a real, unsynchronized top-tier SUSDB (milestone M11).
+  analyzer SARIF upload, and the full build on `windows-latest` under Windows PowerShell 5.1.
+- **Live lane** (`.github/workflows/live-lane.yaml`, milestone M11, a feasibility spike and not a
+  required check). On `windows-latest` it installs SQL Server 2022 Express as the named instance
+  `SQLEXPRESS` from pinned downloads, installs the WSUS role and runs its post-installation tasks
+  against that instance, installs the built script into a protected folder, makes SYSTEM the
+  SUSDB owner, and runs the script as SYSTEM through a scheduled task: `-ValidateOnly`, a dry run,
+  two live runs, a refused report folder, a refused script location, terminated runs and a rerun
+  (section 10, M11). It runs when started by hand (Actions, "Live lane", "Run workflow", or
+  `gh workflow run live-lane.yaml`, once the workflow is on the default branch) and on pull
+  requests that change the lane itself; the first run is started by hand with `record-pins`
+  (`gh workflow run live-lane.yaml -f record-pins=true`) to print the two download pins, which are
+  then committed to the workflow. The scripts it calls
+  live in `.github/scripts/live-lane/` and cite the Microsoft documentation for each install
+  step.
 - **Release** (`.github/workflows/release.yaml`, tags `v*`): a module-free sealed build, then
   analyze, test and smoke run against the sealed copy. Only then is the GitHub Release published,
   bound to the sealed digest, carrying the script, its `.sha256` sidecar,
@@ -219,8 +231,10 @@ pinned digest. These integration pieces are delivered separately in that reposit
   twice, and asserts the exit codes, the summary, the events, replica gating, and that the second
   run finds nothing to do.
 - **I5. Autonomous lifecycle variant.** A dispatch-only variant that builds the server with
-  `replica: false` against a test upstream, skips the client proof, and gives the decline engine
-  live evidence.
+  `replica: false` against a test upstream and reuses the deployment's three clients (Windows
+  Server 2019, 2022 and 2025). The clients report the updates they need, so a run proves content
+  staging, deferred approval (with a short test delay), deadlines and stale-computer handling end
+  to end, and gives the decline engine live evidence; it takes longer than the replica proof.
 
 Paths:
 
@@ -570,7 +584,7 @@ Notes on scope:
 | M8 | Lifecycle automation: needed-update approval with per-group delays and deadlines, content pre-staging, late-content warning, exclusions, licences | LCA-01 to LCA-09 (section 11) | **Done** (gate green, 2026-10-07) |
 | M9 | Housekeeping and health | 030–032, 067 | **Done** (gate green, 2026-10-07) |
 | M10 | Hardening and release readiness: folder protection, dependency check, interruption tests, ADRs, schema release assets | 048, 092, 093, 096, 098 | **Done** (gate green, 2026-10-07) |
-| M11 | Runner lane: SQL Server Express and WSUS on the hosted Windows runner (spike first) | live evidence (section 12, lane A) | Planned |
+| M11 | Live lane: SQL Server Express and WSUS on the hosted Windows runner (feasibility spike) | live evidence (section 12, lane A) | **Prepared** (workflow and scripts written and shape-tested, 2026-10-07); not yet run on GitHub |
 
 Each milestone ends with the local gate green. M0 to M10 are release one as built; M11 and the
 `windows-wsus` integration pieces I1 to I5 (section 3.5) produce the live evidence that section 12
@@ -1072,6 +1086,57 @@ and a partial backup file replaced; the release workflow's schema assets; and th
 exit codes of the smoke script (0, 2 and 4 for the fixtures, and 0 or 4 for stage lists, the
 index removal, report formats, verbosity and a relative report folder).
 
+What M11 prepared (not yet run on GitHub): the workflow `.github/workflows/live-lane.yaml` and the
+scripts in `.github/scripts/live-lane/`:
+
+- **`Install-SqlExpress.ps1`.** Downloads the SQL Server 2022 Express installer from the link on
+  Microsoft Learn and checks its SHA-256 against the pin in the workflow; has it download the
+  Express Core package and checks that against its pin; extracts the package (`/q /x:`) and runs
+  `setup.exe /Q /ACTION=Install /FEATURES=SQLENGINE /INSTANCENAME=SQLEXPRESS` with the runner's
+  account as the only sysadmin, so that SYSTEM gets only what the deployment gives it. The service
+  runs as `NT SERVICE\MSSQL$SQLEXPRESS`.
+- **`Install-WsusRole.ps1`.** `Install-WindowsFeature UpdateServices-Services, UpdateServices-DB
+  -IncludeManagementTools`, then `WsusUtil.exe postinstall SQL_INSTANCE_NAME=<computer>\SQLEXPRESS
+  CONTENT_DIR=C:\WSUS`; records the WSUS setup registry values; sends one request to the WSUS
+  website and flushes the HTTP.sys log buffer so that its IIS log folder exists.
+- **`Install-LaneScript.ps1`.** Protects `C:\ProgramData\NWarila\bin` and the configuration folder
+  for SYSTEM and Administrators (`icacls /inheritance:r /grant:r`), installs the built script and
+  a configuration document (backup to `C:\LiveLane\Backups`, which the script must create; TLS and
+  certificate checks off, because the lane has no TLS), registers the event source, and makes
+  SYSTEM a login and the SUSDB owner (`ALTER AUTHORIZATION`), as I2 does.
+- **`Invoke-LaneRuns.ps1`.** Runs the script as SYSTEM by a scheduled task (`powershell.exe -File`,
+  highest run level) and checks each run by the exit code Task Scheduler records, the summary and
+  the events: `-ValidateOnly` exits 0; a dry run changes nothing in SUSDB or the backup folder;
+  the first live run creates and tags both custom indexes, applies or finds the `spDeleteUpdate`
+  fix, and writes a backup into a protected folder it created for the SQL Server service; the
+  second live run finds nothing new and still leaves one backup file for the day; the
+  custom-index stage alone passes the backup gate from `msdb.dbo.backupset`; a report folder that
+  standard users can change stops the run with exit code 3 and stays empty; and the script copied
+  to such a folder stops with exit code 3 at the installation check. Every completed run must
+  match its summary's exit code and have no stage in error; exit codes 0 and 2 are accepted, and
+  the job summary lists every notice.
+- **`Invoke-LaneInterruption.ps1`.** Removes the custom indexes with the script's own removal
+  action, then terminates live runs (`Stop-ScheduledTask`) as soon as the run log shows that a
+  chosen stage started (custom indexes first, then backup, the procedure fix, built-in cleanup,
+  sync history, re-index and health checks), checking after each that no custom index exists
+  without its tag; a final run must succeed, recreate both indexes with their tags, leave one
+  backup file for the day, and `DBCC CHECKDB` must report no error.
+- **`Test-LaneSchemas.ps1`** (PowerShell 7) validates the configuration document and every summary
+  against the published schemas; **`Save-LaneEvidence.ps1`** collects the logs, reports,
+  summaries, events and the setup and post-installation logs, which the workflow uploads even
+  when a step fails.
+
+What only the first runs on GitHub can show: the installer's download switches
+(`/ACTION=Download /MEDIAPATH /MEDIATYPE=Core /QUIET`, which Microsoft Learn does not document) and
+the two pins; that SQL Server 2022 Express installs on the runner's Windows Server release; that
+the WSUS role installs there without a restart and its post-installation tasks succeed against a
+named Express instance; that a scheduled task runs as SYSTEM on a hosted runner; the access
+control list a folder inherits from the runner's system drive (the refused-folder cases depend on
+it); whether SYSTEM can read `msdb.dbo.backupset`; where the terminations land; and whether the
+job fits its 120-minute limit. The workflow-shape tests (`tests/Release/LiveLane.Tests.ps1`)
+check the triggers, permissions, action pins, step order, the Microsoft citations and install
+switches in the scripts, the scripts' syntax, and the helpers that need no Windows component.
+
 Notes for maintainers:
 
 - **Stage handlers.** Every stage of the catalogue has a handler in `Get-MaintenanceStageHandler`.
@@ -1189,42 +1254,49 @@ risk.
 
 ### 12.1 Live evidence still owed
 
-**A. SQL Server Express runner lane (M11).** A hosted Windows runner with SQL Server Express and
-the WSUS role, an unsynchronized top-tier SUSDB, and the built script started by a scheduled task
-as SYSTEM:
+**A. SQL Server Express live lane (M11).** A hosted Windows runner (`windows-latest`) with SQL
+Server 2022 Express as a named instance and the WSUS role, an unsynchronized top-tier SUSDB, and
+the built script started by a scheduled task as SYSTEM (`.github/workflows/live-lane.yaml`,
+section 10, M11). Prepared and not yet run; each item says whether the lane asserts it or only
+records it in the job summary:
 
-- that `HAS_PERMS_BY_NAME` reports the stage permissions as expected for SYSTEM as database owner,
-  and for a login that is not;
-- that `dbo.tbEventInstance` has the `TimeAtServer` column and that it holds UTC times;
-- that SYSTEM can read `msdb.dbo.backupset` for the backup gate;
+- that SYSTEM as the SUSDB owner, and not a sysadmin, has every permission the stages check with
+  `HAS_PERMS_BY_NAME` (asserted: no stage skipped for a permission or in error; the permission
+  line of the log is recorded); a login that is not the owner is not exercised;
+- that SYSTEM can read `msdb.dbo.backupset` for the backup gate (asserted by a run of the
+  custom-index stage alone);
+- that `dbo.tbEventInstance` has the `TimeAtServer` column (asserted: the sync-history stage
+  succeeds);
+  whether it holds UTC times stays open, because an unsynchronized server has no such records;
 - that `SERVERPROPERTY('Edition')` begins with the edition name the compression choice reads
-  (Express: no compression);
-- the text `OBJECT_DEFINITION` returns for `dbo.spDeleteUpdate` on the WSUS version of the
-  runner's Windows Server release (leading comments, header, declaration spacing), before and
-  after the fix (lane B adds Windows Server 2022's);
-- that the custom indexes are created and tagged in one transaction (`SET XACT_ABORT ON`,
-  `sys.sp_addextendedproperty`) and that the removal action drops only those;
+  (recorded: Express, no compression);
+- the text `OBJECT_DEFINITION` returns for `dbo.spDeleteUpdate` on the runner's WSUS version, and
+  the fix (asserted: applied or already applied; lane B adds Windows Server 2022's);
+- that the custom indexes are created and tagged in one transaction and that the removal action
+  drops only those (asserted, including after terminated runs);
 - that a backup folder the run creates, protected for SYSTEM, Administrators and
   `NT SERVICE\MSSQL$SQLEXPRESS`, lets the SQL Server service write the backup, and that a second
-  backup on the same day replaces the first;
-- that the folders the run creates carry exactly the protected access control list on NTFS, that
-  an existing folder with inherited `%ProgramData%` permissions is refused, and how the
-  installation check judges the folder the runner starts the script from;
+  backup on the same day replaces the first (asserted);
+- that the folders the run creates carry a protected access control list on NTFS, that an existing
+  folder with inherited permissions is refused and left empty, and that the script refuses to run
+  from such a folder (asserted);
 - that the dependency check finds the WSUS administration API, the SQL Server client and the IIS
-  configuration once the WSUS role is installed, and that the script runs as a 64-bit process (a
-  32-bit process would read a redirected `applicationHost.config` path);
-- that WSUS setup records `UsingSSL`, `TargetDir` and `SqlServerName` in its registry key as
-  discovery and the TLS and site checks expect, and the IIS site, log folder and application pool
-  WSUS setup creates;
+  configuration once the WSUS role is installed (asserted: no stop, no unavailable stage); the
+  task starts the 64-bit `powershell.exe`;
+- the WSUS setup registry values (`SqlServerName` asserted; `UsingSSL`, `PortNumber`,
+  `TargetDir` and `ContentDir` recorded) and the IIS site, log folder and application pool WSUS
+  setup creates (exercised by the site detection, the IIS log retention and the pool check);
 - that the local `AdminProxy.GetUpdateServer()` connects under SYSTEM, and that setting
-  `PreferredCulture` to `en` and restoring the previous (possibly empty) value works on an
-  English server;
+  `PreferredCulture` to `en` and restoring it works on an English server (asserted: the run and the
+  decline stages complete);
 - that `spGetObsoleteUpdatesToCleanup`, each built-in cleanup option, the re-index statements and
-  `sp_updatestats` complete on a real SUSDB, and that a second run finds nothing to do;
-- the exit codes Task Scheduler records for a successful run, a stage error and a failed
-  precondition;
+  `sp_updatestats` complete on a real SUSDB, and that a second run finds nothing new (asserted);
+- the exit codes Task Scheduler records: 0 for `-ValidateOnly`, 0 or 2 for completed runs, 3 for
+  a failed precondition, each equal to the summary's (asserted); a stage error (1) is not
+  provoked;
+- the events of each run (asserted: run started, run completed, precondition failure);
 - that terminating the task at several points of a run and then running it again leaves SUSDB
-  consistent and every stage succeeding (REQ-096).
+  consistent (`DBCC CHECKDB`) and every stage succeeding (asserted, REQ-096).
 
 **B. `windows-wsus` replica proof (I4).** The replica the `windows-wsus` repository builds on every
 change: SQL Server 2022 Standard (default instance), Windows Server 2022, domain-joined, TLS, with
@@ -1252,8 +1324,8 @@ reporting clients:
 
 **C. Autonomous lifecycle variant (I5).** A dispatch-only build with `replica: false` against a
 test upstream, which gives the decline engine and the approval stages a server that may decline
-and approve; as planned it has no reporting clients, so the items marked "needs clients" stay open
-until clients are added to it:
+and approve, with the deployment's three clients (Windows Server 2019, 2022 and 2025) reporting
+the updates they need and a short test delay for deferred approval:
 
 - how long `GetUpdates` takes over the undeclined updates, and the memory the WsusPool application
   pool needs for it;
@@ -1263,22 +1335,26 @@ until clients are added to it:
 - which errors `DeleteUpdate` raises for a declined update that other updates still reference;
 - which exceptions a built-in cleanup time-out raises through the administration API, so that
   the retry test recognises them (seen only if a time-out occurs);
+- that the per-update summaries report needed counts for updates that are not yet approved, which
+  the approval candidates rely on;
 - the state an unapproved update reports, and how quickly an approval for the empty staging
   group starts its download on a downstream server with deferred downloads;
-- how a staging approval removal interacts with the built-in unneeded-content cleanup;
-- whether `AcceptLicenseAgreement` succeeds for an update whose licence text is not yet
-  downloaded, before staging has fetched it;
+- that deferred approval approves each needed update for each group once its delay has passed,
+  with its deadline, and that a repeat run approves nothing new;
 - whether an approval's deadline is accepted in UTC as documented, and how `CanRequestUserInput`
   is set on updates that ask for input (needs an update that asks for input);
-- that the per-update summaries report needed counts for updates that are not yet approved, which
-  the approval candidates rely on (needs clients);
-- how `AddComputerTarget` treats a stale computer that is already in other groups, for the `Move`
-  action (needs clients).
+- whether `AcceptLicenseAgreement` succeeds for an update whose licence text is not yet
+  downloaded, before staging has fetched it;
+- how a staging approval removal interacts with the built-in unneeded-content cleanup;
+- stale-computer handling against real clients: the threshold, the guard and, for the `Move`
+  action, how `AddComputerTarget` treats a computer that is already in other groups.
 
 **Not covered by any planned lane.** These stay open after A, B and C:
 
-- Windows Server 2019, and whichever of Windows Server 2022 and 2025 neither the runner nor the
-  replica runs;
+- Windows Server 2019 as the WSUS server (lane A runs on `windows-latest`, Windows Server 2025
+  today, and lane B on Windows Server 2022; Windows Server 2019 appears only as a client in lane
+  C);
+- whether `TimeAtServer` holds UTC times, which needs a server with synchronization history;
 - a server whose display language is not English, where `PreferredCulture` must return English
   titles and category names for the rules and the Upgrades exclusion;
 - a large SUSDB that has gone without maintenance: first-run durations, the time budget across
@@ -1343,8 +1419,8 @@ until clients are added to it:
 - **Errors before the run log.** An unexpected error while reading the configuration or opening
   the outputs exits 1 without a report, because no report location is known yet; nothing has
   been changed at that point.
-- **Termination.** Termination is simulated in the tests by stopping a stage between items; a
-  live interruption (lane A) is still owed. A built-in cleanup option that is terminated restarts
+- **Termination.** Termination is simulated in the unit tests by stopping a stage between items;
+  the live lane (lane A) terminates real runs, but has not run on GitHub yet. A built-in cleanup option that is terminated restarts
   from the beginning on the next run.
 - **Dependency check scope.** Only the components the script calls are checked (the WSUS
   administration API, the SQL Server client and the IIS configuration); a component that is

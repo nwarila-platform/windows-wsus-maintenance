@@ -1,0 +1,115 @@
+name: Live lane
+
+# Feasibility spike (milestone M11): SQL Server 2022 Express (named instance) and the WSUS role on
+# a hosted Windows runner, with the built script installed into a protected folder and run as
+# SYSTEM by a scheduled task: -ValidateOnly, a dry run, two live runs, refused folders, terminated
+# runs and a rerun. Not a required check. The steps and the scripts they call cite the Microsoft
+# documentation for each install step; .github/scripts/live-lane/ holds them.
+#
+# The two SHA-256 pins below are empty until the first run records them: start the workflow by hand
+# with "record-pins", copy the two values from the job summary into the pins, and commit them.
+# Until then every run stops at the first download.
+
+on:
+  workflow_dispatch:
+    inputs:
+      record-pins:
+        description: Print the SHA-256 of the SQL Server Express downloads instead of checking the pins.
+        type: boolean
+        default: false
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/live-lane.yaml
+      - .github/scripts/live-lane/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-lane-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live-lane:
+    name: live lane (SQL Server Express, WSUS, SYSTEM)
+    runs-on: windows-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    env:
+      SQL_INSTANCE: SQLEXPRESS
+      # SQL Server 2022 Express, as linked from Microsoft Learn ("Installation media" in
+      # https://learn.microsoft.com/sql/database-engine/configure-windows/sql-server-express-localdb).
+      SQLEXPRESS_BOOTSTRAPPER_URL: https://go.microsoft.com/fwlink/?linkid=2215160
+      SQLEXPRESS_BOOTSTRAPPER_SHA256: ''
+      SQLEXPRESS_MEDIA_SHA256: ''
+      RECORD_PINS: ${{ github.event_name == 'workflow_dispatch' && inputs.record-pins }}
+      LANE_BACKUP_PATH: C:\LiveLane\Backups
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Build the script (Windows PowerShell)
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Task Build
+
+      - name: Install SQL Server 2022 Express
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\.github\scripts\live-lane\Install-SqlExpress.ps1 `
+            -BootstrapperUrl $env:SQLEXPRESS_BOOTSTRAPPER_URL `
+            -BootstrapperSha256 $env:SQLEXPRESS_BOOTSTRAPPER_SHA256 `
+            -MediaSha256 $env:SQLEXPRESS_MEDIA_SHA256 `
+            -InstanceName $env:SQL_INSTANCE `
+            -WorkPath (Join-Path -Path $env:RUNNER_TEMP -ChildPath 'sqlexpress') `
+            -RecordPins:($env:RECORD_PINS -eq 'true')
+
+      - name: Install the WSUS role on SQL Server Express
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\.github\scripts\live-lane\Install-WsusRole.ps1 -InstanceName $env:SQL_INSTANCE -ContentPath 'C:\WSUS'
+
+      - name: Install the script
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\.github\scripts\live-lane\Install-LaneScript.ps1 `
+            -BuiltScript (Join-Path -Path $PWD -ChildPath 'build\Invoke-WsusMaintenance.ps1') `
+            -BackupPath $env:LANE_BACKUP_PATH
+
+      - name: Run as SYSTEM (validate, dry run, live twice, refused folders)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\.github\scripts\live-lane\Invoke-LaneRuns.ps1 -BackupPath $env:LANE_BACKUP_PATH
+
+      - name: Terminate runs part-way and run again
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\.github\scripts\live-lane\Invoke-LaneInterruption.ps1 -BackupPath $env:LANE_BACKUP_PATH
+
+      - name: Validate the configuration and every summary against the schemas
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./.github/scripts/live-lane/Test-LaneSchemas.ps1 -SchemaFolder (Join-Path -Path $PWD -ChildPath 'docs/reference')
+
+      - name: Collect the evidence
+        if: always()
+        shell: powershell
+        run: |
+          & .\.github\scripts\live-lane\Save-LaneEvidence.ps1 -Destination (Join-Path -Path $env:RUNNER_TEMP -ChildPath 'live-lane-evidence')
+
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: live-lane-evidence
+          path: ${{ runner.temp }}/live-lane-evidence
+          if-no-files-found: warn

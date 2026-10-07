@@ -24,6 +24,8 @@
 !/.github/workflows/*.yml
 !/.github/scripts/
 !/.github/scripts/*.ps1
+!/.github/scripts/live-lane/
+!/.github/scripts/live-lane/*.ps1
 
 # Analyzer rules
 !/analyzers/
