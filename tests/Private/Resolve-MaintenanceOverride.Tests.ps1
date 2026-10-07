@@ -5,10 +5,11 @@
 Describe 'Resolve-MaintenanceOverride' {
   BeforeAll {
     . (Join-Path -Path $PSScriptRoot -ChildPath '../../build/Invoke-WsusMaintenance.Functions.ps1')
+    . (Join-Path -Path $PSScriptRoot -ChildPath '../Helpers/MaintenanceFakes.ps1')
     $script:FixtureRoot = Join-Path -Path $PSScriptRoot -ChildPath '../Fixtures/Configuration'
 
     Function script:New-Effective {
-      ConvertTo-MaintenanceEffectiveConfiguration -Document (Read-MaintenanceConfiguration -Path (Join-Path -Path $script:FixtureRoot -ChildPath 'minimal-valid.json'))
+      Get-FakeConfiguration -Json (Get-Content -LiteralPath (Join-Path -Path $script:FixtureRoot -ChildPath 'minimal-valid.json') -Raw)
     }
   }
 

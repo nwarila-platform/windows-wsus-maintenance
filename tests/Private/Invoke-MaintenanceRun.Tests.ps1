@@ -5,12 +5,13 @@
 Describe 'Invoke-MaintenanceRun' {
   BeforeAll {
     . (Join-Path -Path $PSScriptRoot -ChildPath '../../build/Invoke-WsusMaintenance.Functions.ps1')
+    . (Join-Path -Path $PSScriptRoot -ChildPath '../Helpers/MaintenanceFakes.ps1')
 
     # The backup gate is off unless a test sets it, so that stand-in stages run unconditionally.
     Function script:New-Configuration {
       Param ([System.String]$Extra = '', [System.String]$Gate = 'Off')
       $Json = '{ "schemaVersion": 1, "backup": { "destination": "H:\\B", "gate": "' + $Gate + '" }' + $Extra + ' }'
-      ConvertTo-MaintenanceEffectiveConfiguration -Document ($Json | ConvertFrom-Json)
+      Get-FakeConfiguration -Json $Json
     }
 
     Function script:Invoke-Run {

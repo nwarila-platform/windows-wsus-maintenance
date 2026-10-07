@@ -5,6 +5,42 @@
 # synchronization guard and the database helpers run on any platform. Each mirrors only the
 # members the script uses.
 
+# Effective configurations by document text. Building one walks the whole configuration
+#   catalogue, which costs about a second per call under breakpoint-based code coverage, so each
+#   distinct document is built once per test file and every caller gets its own copy to change.
+$script:FakeConfigurations = [System.Collections.Generic.Dictionary[System.String, System.Object]]::new([System.StringComparer]::Ordinal)
+
+Function Copy-FakeObject {
+  Param ($InputObject)
+
+  If ($InputObject -is [System.Management.Automation.PSCustomObject]) {
+    $Copy = [ordered]@{}
+    ForEach ($Property In $InputObject.PSObject.Properties) {
+      $Copy[$Property.Name] = Copy-FakeObject -InputObject $Property.Value
+    }
+    [PSCustomObject]$Copy
+  } ElseIf ($InputObject -is [System.Array]) {
+    $Copy = [System.Array]::CreateInstance($InputObject.GetType().GetElementType(), $InputObject.Length)
+    For ($Index = 0; $Index -lt $InputObject.Length; $Index++) {
+      $Copy[$Index] = Copy-FakeObject -InputObject $InputObject[$Index]
+    }
+    , $Copy
+  } Else {
+    $InputObject
+  }
+}
+
+# The effective configuration of a configuration document given as JSON, as a fresh copy.
+Function Get-FakeConfiguration {
+  Param ([System.String]$Json)
+
+  If ($script:FakeConfigurations.ContainsKey($Json) -eq $False) {
+    $script:FakeConfigurations[$Json] = ConvertTo-MaintenanceEffectiveConfiguration -Document ($Json | ConvertFrom-Json)
+  }
+
+  Copy-FakeObject -InputObject $script:FakeConfigurations[$Json]
+}
+
 Function New-FakeUpdateServer {
   Param (
     [System.Boolean]$IsReplica = $False,
@@ -190,7 +226,7 @@ Function New-FakeStageContext {
   [PSCustomObject]@{
     StageName           = 'Stage'
     DryRun              = $DryRun
-    Configuration       = ConvertTo-MaintenanceEffectiveConfiguration -Document ($Json | ConvertFrom-Json)
+    Configuration       = Get-FakeConfiguration -Json $Json
     Deadline            = $Deadline
     RunStart            = [System.DateTime]::new(2026, 11, 2, 1, 0, 0)
     Log                 = $Log

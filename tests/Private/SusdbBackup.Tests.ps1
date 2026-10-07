@@ -283,7 +283,7 @@ Describe 'Test-BackupGate' {
   BeforeAll {
     Function script:New-GateConfiguration {
       Param ([System.String]$Gate = 'Required')
-      ConvertTo-MaintenanceEffectiveConfiguration -Document (('{ "schemaVersion": 1, "backup": { "destination": "H:\\B", "gate": "' + $Gate + '" } }') | ConvertFrom-Json)
+      Get-FakeConfiguration -Json ('{ "schemaVersion": 1, "backup": { "destination": "H:\\B", "gate": "' + $Gate + '" } }')
     }
 
     Function script:New-GateServer {
