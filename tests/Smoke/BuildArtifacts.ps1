@@ -70,8 +70,20 @@ function Invoke-ReleaseScript {
     $Arguments.Add($Item)
   }
 
-  $Null = & $PowerShellCommand.Source @Arguments 2>&1
-  $LASTEXITCODE
+  # Each case is judged by the child's exit code alone. Windows PowerShell 5.1 turns every
+  #   stderr line of a native command redirected with 2>&1 into an error record, which the
+  #   script-wide 'Stop' would make terminating, and the negative cases write to stderr by
+  #   design. The preference is therefore relaxed for the call only and restored afterwards.
+  $PreviousPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $Null = & $PowerShellCommand.Source @Arguments 2>&1
+    $ExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $PreviousPreference
+  }
+
+  $ExitCode
 }
 
 $HelpExitCode = Invoke-ReleaseScript -ScriptArgument @('-?')
