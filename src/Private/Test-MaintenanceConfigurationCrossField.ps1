@@ -8,6 +8,7 @@ $Script:Message += @{
   'Test-MaintenanceConfigurationCrossField.DuplicateId'  = 'eventLog.eventIds: each event identifier must be distinct; {0} is used more than once.'
   'Test-MaintenanceConfigurationCrossField.Overlap'      = 'declinedDeletion: classifications may not be both included and excluded: {0}.'
   'Test-MaintenanceConfigurationCrossField.RequiredWhen' = '{0}: is required when {1}.'
+  'Test-MaintenanceConfigurationCrossField.StagingGroup' = "approval.staging.groupName: the staging group '{0}' must not also be one of approval.groups."
   'Test-MaintenanceConfigurationCrossField.UnknownGroup' = "declines.rules[{0}].group: refers to '{1}', which is not defined in declines.groups."
   'Test-MaintenanceConfigurationCrossField.ZeroDays'     = 'staleComputers.thresholdDays: zero days is refused unless staleComputers.override is true.'
 }
@@ -22,7 +23,9 @@ Function Test-MaintenanceConfigurationCrossField {
         required when a feature is enabled, a zero-day stale-computer threshold without
         the override, classifications both included and excluded from declined-update
         deletion, duplicate event identifiers, certificate warning tiers that do not
-        descend, and decline rules that name an undefined group. Missing values take
+        descend, decline rules that name an undefined group, approval enabled without a
+        group or without a staging group, and a staging group that is also an approval
+        group. Missing values take
         their catalogue default. A rule is skipped when one of its inputs already failed
         validation, so a single mistake is reported once.
 
@@ -99,6 +102,7 @@ Function Test-MaintenanceConfigurationCrossField {
   [System.Int32]$Private:Index = 0
   [System.Object[]]$Private:Tiers = @()
   [System.String[]]$Private:Result = @()
+  [System.String]$Private:StagingName = [System.String]::Empty
 
   $Errors = [System.Collections.Generic.List[System.String]]::new()
   $Invalid = [System.Collections.Generic.HashSet[System.String]]::new([System.StringComparer]::Ordinal)
@@ -165,6 +169,25 @@ Function Test-MaintenanceConfigurationCrossField {
       If ($Tiers[$Index] -ge $Tiers[$Index - 1]) {
         $Errors.Add(($Script:Message['Test-MaintenanceConfigurationCrossField.Descending'] -f 'health.certificateExpiry.warningDays', (ConvertTo-MaintenanceDisplayValue -Value:$Tiers)))
         Break
+      }
+    }
+  }
+
+  If (($Invalid.Contains('approval.enabled') -eq $False) -and ($Effective['approval.enabled'] -eq $True)) {
+    If (($Invalid.Contains('approval.groups') -eq $False) -and (@($Effective['approval.groups'] | Where-Object -FilterScript { $Null -ne $PSItem }).Count -eq 0)) {
+      $Errors.Add(($Script:Message['Test-MaintenanceConfigurationCrossField.RequiredWhen'] -f 'approval.groups', 'approval.enabled is true'))
+    }
+
+    If (($Invalid.Contains('approval.staging.enabled') -eq $False) -and ($Effective['approval.staging.enabled'] -eq $True) -and ($Invalid.Contains('approval.staging.groupName') -eq $False) -and ($Null -eq $Effective['approval.staging.groupName'])) {
+      $Errors.Add(($Script:Message['Test-MaintenanceConfigurationCrossField.RequiredWhen'] -f 'approval.staging.groupName', 'approval.enabled and approval.staging.enabled are true'))
+    }
+  }
+
+  If (($Invalid.Contains('approval.groups') -eq $False) -and ($Invalid.Contains('approval.staging.groupName') -eq $False) -and ($Null -ne $Effective['approval.staging.groupName'])) {
+    $StagingName = [System.String]$Effective['approval.staging.groupName']
+    ForEach ($Group In @($Effective['approval.groups'] | Where-Object -FilterScript { $Null -ne $PSItem })) {
+      If ([System.String]::Equals([System.String]$Group.name, $StagingName, [System.StringComparison]::OrdinalIgnoreCase) -eq $True) {
+        $Errors.Add(($Script:Message['Test-MaintenanceConfigurationCrossField.StagingGroup'] -f $StagingName))
       }
     }
   }

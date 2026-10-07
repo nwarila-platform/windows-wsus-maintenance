@@ -24,8 +24,9 @@ Function Get-MaintenanceStagePlan {
         Every enabled stage runs on every run; each stage acts only on what is due, so a
         stage the time budget cut short is simply done on the next run. With -Stage only
         the listed stages run. A stage that configuration disables is skipped either way.
-        On a replica, every stage that declines updates (the decline policies and declined-update
-        deletion) is skipped with "skipped: replica", and when the tier is unknown it is skipped
+        On a replica, every stage that declines or approves updates (the decline policies, content
+        staging, deferred approval and declined-update deletion) is skipped with "skipped:
+        replica", and when the tier is unknown it is skipped
         too; so is the stale-computer stage when its action moves computers into a group, because a
         replica inherits its groups. A stage whose database permissions are missing is skipped and
         names them in Missing.
@@ -107,7 +108,7 @@ Function Get-MaintenanceStagePlan {
   Write-Debug -Message:'[Get-MaintenanceStagePlan] Entering'
 
   # Initialize Variable(s)
-  [System.String[]]$Private:Gated = @('SupersededDecline', 'AcceleratedDecline', 'ExpiredDecline', 'RuleDecline', 'DeclinedDeletion')
+  [System.String[]]$Private:Gated = @('SupersededDecline', 'AcceleratedDecline', 'ExpiredDecline', 'RuleDecline', 'ContentStaging', 'DeferredApproval', 'DeclinedDeletion')
   [System.Boolean]$Private:GroupMove = $False
   [System.Boolean]$Private:Listed = @($Stage).Count -gt 0
   [System.String[]]$Private:Missing = @()

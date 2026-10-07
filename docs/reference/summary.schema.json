@@ -152,7 +152,7 @@
     "stage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "order", "status", "reason", "startedAt", "durationSeconds", "counts", "message", "itemCount", "errorMessage", "errorTime"],
+      "required": ["name", "order", "status", "reason", "startedAt", "durationSeconds", "counts", "message", "itemCount", "items", "errorMessage", "errorTime"],
       "properties": {
         "name": { "type": "string" },
         "order": { "type": "integer", "minimum": 1 },
@@ -172,6 +172,11 @@
         "itemCount": {
           "description": "Number of items the stage acted on; the report lists at most report.maxItemsPerSection of them and the run log lists all.",
           "$ref": "#/definitions/count"
+        },
+        "items": {
+          "description": "The items the report lists for the stage (at most report.maxItemsPerSection), for example each approval and staging action.",
+          "type": "array",
+          "items": { "type": "string" }
         },
         "errorMessage": { "type": "string" },
         "errorTime": {

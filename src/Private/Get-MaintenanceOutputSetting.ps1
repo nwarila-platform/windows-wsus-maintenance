@@ -173,7 +173,7 @@ Function Get-MaintenanceOutputSetting {
   }
 
   $EventIds = [System.Collections.Specialized.OrderedDictionary]::new()
-  ForEach ($Kind In @('runStarted', 'runSucceeded', 'runWarning', 'runFailed', 'stageError', 'preconditionFailure', 'configurationInvalid')) {
+  ForEach ($Kind In @('runStarted', 'runSucceeded', 'runWarning', 'runFailed', 'stageError', 'preconditionFailure', 'configurationInvalid', 'lateContent')) {
     $EventIds[$Kind] = [System.Int32]$Values[('eventLog.eventIds.{0}' -f $Kind)]
   }
 

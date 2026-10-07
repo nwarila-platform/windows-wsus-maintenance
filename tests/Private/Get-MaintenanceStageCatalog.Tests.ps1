@@ -13,9 +13,9 @@ Describe 'Get-MaintenanceStageCatalog' {
     }
   }
 
-  It 'lists sixteen uniquely named stages in strictly increasing order' {
-    $script:Catalog | Should -HaveCount 16
-    @($script:Catalog.Name | Sort-Object -Unique) | Should -HaveCount 16
+  It 'lists eighteen uniquely named stages in strictly increasing order' {
+    $script:Catalog | Should -HaveCount 18
+    @($script:Catalog.Name | Sort-Object -Unique) | Should -HaveCount 18
     For ($Index = 1; $Index -lt $script:Catalog.Count; $Index++) {
       $script:Catalog[$Index].Order | Should -BeGreaterThan $script:Catalog[$Index - 1].Order
     }
@@ -38,6 +38,17 @@ Describe 'Get-MaintenanceStageCatalog' {
     ForEach ($Decline In @('SupersededDecline', 'AcceleratedDecline', 'ExpiredDecline', 'RuleDecline')) {
       (Get-StageOrder -Name $Decline) | Should -BeLessThan (Get-StageOrder -Name 'DeclinedDeletion')
       (Get-StageOrder -Name $Decline) | Should -BeLessThan (Get-StageOrder -Name 'BuiltInCleanup')
+    }
+  }
+
+  It 'puts content staging and deferred approval after every decline and before declined-update deletion and the built-in cleanup' {
+    (Get-StageOrder -Name 'ContentStaging') | Should -BeLessThan (Get-StageOrder -Name 'DeferredApproval')
+    ForEach ($Approval In @('ContentStaging', 'DeferredApproval')) {
+      ForEach ($Decline In @('SupersededDecline', 'AcceleratedDecline', 'ExpiredDecline', 'RuleDecline')) {
+        (Get-StageOrder -Name $Approval) | Should -BeGreaterThan (Get-StageOrder -Name $Decline)
+      }
+      (Get-StageOrder -Name $Approval) | Should -BeLessThan (Get-StageOrder -Name 'DeclinedDeletion')
+      (Get-StageOrder -Name $Approval) | Should -BeLessThan (Get-StageOrder -Name 'BuiltInCleanup')
     }
   }
 

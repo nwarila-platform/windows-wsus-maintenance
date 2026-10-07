@@ -36,6 +36,9 @@ problem is reported together, and nothing is corrected.
 - `health.certificateExpiry.warningDays` is strictly descending.
 - A decline rule's `group` names a group defined in `declines.groups` (matched without regard to
   case).
+- `approval.groups` (at least one) is required while `approval.enabled` is true, and
+  `approval.staging.groupName` while `approval.enabled` and `approval.staging.enabled` are both
+  true. The staging group may not also be one of `approval.groups`.
 
 ## Decline rules
 
@@ -57,6 +60,20 @@ Base articles are the numbers WSUS stores, without a `KB` prefix; a `KB` prefix 
 Date tests compare with the start of the run minus the given days. Rules run in order, and an update a
 rule (or an earlier decline policy of the run) has declined is not counted again. An update on
 `declines.neverDecline` is never declined by any policy or rule.
+
+## Approval
+
+`approval` turns on content staging and deferred approval; it is off by default and stays off
+on a server that only synchronizes and serves. Each entry of `approval.groups` names an existing
+computer group, the days after an update revision's creation date before it is approved for that
+group (`delayDays`), and the days after the approval to its install deadline (`deadlineDays`;
+none when absent, and none for an update that can request user input). Groups are never created.
+Fixed, not configurable: only updates at least one client needs are staged or approved; the
+Upgrades classification is never approved (`excludedClassifications` adds to it); a superseded
+update is not approved while an update that supersedes it is approved or eligible; WSUS
+infrastructure updates are approved first; and an update whose files are not yet local on its
+approval date is approved on schedule with a warning. The staging group must exist and stay
+empty. The server's download settings are reported, never changed.
 
 ## Keys
 ### `schemaVersion`
@@ -192,6 +209,18 @@ rule (or an earlier decline policy of the run) has declined is not counted again
 | `declines.rules` | RuleArray | array of decline rules (see below) | `[]` | Decline rules defined for the deployment. None ships enabled. |
 | `declines.groups` | GroupArray | array of `{name, enabled}` | `[]` | Rule groups. Disabling a group disables all of its rules. |
 
+### `approval`
+
+| Key | Type | Valid values | Default | Meaning |
+| --- | --- | --- | --- | --- |
+| `approval.enabled` | Boolean | `true`, `false` | `false` | Approve the updates clients need for each configured computer group after its delay, and stage their content early. Leave off on a server that only synchronizes and serves. |
+| `approval.groups` | ApprovalGroupArray | array of `{name, delayDays, deadlineDays?}` with days from 0 to 3650 | `[]` | Computer groups to approve for, each {name, delayDays, deadlineDays?}: days after the revision creation date before approval, and days after approval to the install deadline (none when absent). Required when approval is enabled. |
+| `approval.staging.enabled` | Boolean | `true`, `false` | `true` | Approve needed updates for an empty staging group so that their content downloads before their approval date. |
+| `approval.staging.groupName` | String | text matching the documented format, or `null` | `null` | Computer group used for content staging. It must exist and stay empty. Required when approval and staging are enabled. |
+| `approval.neverApprove` | StringArray | array of text, unique | `[]` | Updates never approved or staged, by Knowledge Base number or update GUID. |
+| `approval.excludedClassifications` | StringArray | array of text, unique | `[]` | Classifications never approved or staged, in addition to Upgrades, which is always excluded. |
+| `approval.acceptLicenseAgreements` | Boolean | `true`, `false` | `true` | Accept the licence agreement of an update before approving or staging it; when false, such updates are left unapproved. |
+
 ### `declinedDeletion`
 
 | Key | Type | Valid values | Default | Meaning |
@@ -276,3 +305,4 @@ rule (or an earlier decline policy of the run) has declined is not counted again
 | `eventLog.eventIds.stageError` | Integer | 1 to 65535 | `1100` | Event identifier for each stage error. |
 | `eventLog.eventIds.preconditionFailure` | Integer | 1 to 65535 | `1200` | Event identifier for a precondition failure. |
 | `eventLog.eventIds.configurationInvalid` | Integer | 1 to 65535 | `1300` | Event identifier for an invalid configuration. |
+| `eventLog.eventIds.lateContent` | Integer | 1 to 65535 | `1400` | Event identifier for approvals made before the update files were local. |

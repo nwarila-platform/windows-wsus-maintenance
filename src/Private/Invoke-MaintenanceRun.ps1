@@ -36,6 +36,10 @@ Function Invoke-MaintenanceRun {
     .PARAMETER Configuration
         Effective configuration.
 
+    .PARAMETER Events
+        The event channel of the run (New-MaintenanceEventChannel), or null. Stage handlers
+        receive it in their context to write stage events.
+
     .PARAMETER Log
         The run log, or null. Stage starts, ends, errors and items are written to it, and
         stage handlers receive it in their context to log their progress.
@@ -80,6 +84,17 @@ Function Invoke-MaintenanceRun {
     [ValidateNotNull()]
     [PSCustomObject]
     $Configuration,
+
+    [Parameter(
+      DontShow = $False,
+      Mandatory = $False,
+      ParameterSetName = 'default',
+      ValueFromPipeline = $False,
+      ValueFromPipelineByPropertyName = $False
+    )]
+    [AllowNull()]
+    [PSCustomObject]
+    $Events = $Null,
 
     [Parameter(
       DontShow = $False,
@@ -212,6 +227,7 @@ Function Invoke-MaintenanceRun {
           Log                 = $Log
           Server              = $Server
           RemoveCustomIndexes = [System.Boolean]$RemoveCustomIndexes
+          Events              = $Events
         }
         $Outcome = Invoke-MaintenanceStage -Context:$Context -Handler:(Get-MaintenanceStageHandler -Name:$Entry.Name) -Log:$Log -Stage:$Entry
       }

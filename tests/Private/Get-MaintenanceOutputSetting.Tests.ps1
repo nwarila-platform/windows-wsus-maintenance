@@ -26,7 +26,7 @@ Describe 'Get-MaintenanceOutputSetting' {
     $Setting.EventLog.Enabled | Should -BeTrue
     $Setting.EventLog.LogName | Should -Be 'Application'
     $Setting.EventLog.Source | Should -Be 'Invoke-WsusMaintenance'
-    @($Setting.EventLog.EventIds.PSObject.Properties.Name) | Should -Be @('runStarted', 'runSucceeded', 'runWarning', 'runFailed', 'stageError', 'preconditionFailure', 'configurationInvalid')
+    @($Setting.EventLog.EventIds.PSObject.Properties.Name) | Should -Be @('runStarted', 'runSucceeded', 'runWarning', 'runFailed', 'stageError', 'preconditionFailure', 'configurationInvalid', 'lateContent')
     $Setting.EventLog.EventIds.configurationInvalid | Should -Be 1300
   }
 

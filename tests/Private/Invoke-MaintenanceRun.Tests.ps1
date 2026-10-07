@@ -43,15 +43,15 @@ Describe 'Invoke-MaintenanceRun' {
   It 'runs every enabled stage in catalogue order' {
     $Run = Invoke-Run -Configuration (New-Configuration)
 
-    $Run.Outcomes | Should -HaveCount 16
+    $Run.Outcomes | Should -HaveCount 18
     $Run.Outcomes.Name | Should -Be @(Get-MaintenanceStageCatalog).Name
     $script:Invoked | Should -HaveCount 13
     $script:Invoked[0] | Should -Be 'Backup:False'
     $script:Invoked | Should -Contain 'SupersededDecline:False'
     $script:Invoked[-1] | Should -Be 'HealthChecks:False'
-    @($Run.Outcomes | Where-Object -FilterScript { $PSItem.Status -eq 'Skipped' }).Name | Should -Be @('AcceleratedDecline', 'RuleDecline', 'DeclinedDeletion')
+    @($Run.Outcomes | Where-Object -FilterScript { $PSItem.Status -eq 'Skipped' }).Name | Should -Be @('AcceleratedDecline', 'RuleDecline', 'ContentStaging', 'DeferredApproval', 'DeclinedDeletion')
     $Run.Notices | Should -HaveCount 0
-    $Run.Plan | Should -HaveCount 16
+    $Run.Plan | Should -HaveCount 18
   }
 
   It 'runs the same stages on any day' {
@@ -73,7 +73,7 @@ Describe 'Invoke-MaintenanceRun' {
 
     $Null = Invoke-Run -Configuration (New-Configuration)
 
-    @($script:Contexts[0].PSObject.Properties.Name) | Should -Be @('StageName', 'DryRun', 'Configuration', 'Deadline', 'RunStart', 'Log', 'Server', 'RemoveCustomIndexes')
+    @($script:Contexts[0].PSObject.Properties.Name) | Should -Be @('StageName', 'DryRun', 'Configuration', 'Deadline', 'RunStart', 'Log', 'Server', 'RemoveCustomIndexes', 'Events')
     $script:Contexts[0].RemoveCustomIndexes | Should -BeFalse
   }
 
@@ -139,7 +139,7 @@ Describe 'Invoke-MaintenanceRun' {
     $Run = Invoke-Run -Configuration (New-Configuration) -Extra @{ Stage = @('Reindex') }
 
     $script:Invoked | Should -Be @('Reindex:False')
-    $Run.Outcomes | Should -HaveCount 16
+    $Run.Outcomes | Should -HaveCount 18
   }
 
   It 'logs skipped stages and passes the log to the stages' {

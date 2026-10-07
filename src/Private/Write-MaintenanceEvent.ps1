@@ -16,11 +16,11 @@ Function Write-MaintenanceEvent {
 
     .DESCRIPTION
         Maps the kind of event to its configured identifier and entry type: run started and run
-        completed successfully are Information, completed with warnings is Warning, and completed with
-        errors, a stage error, a precondition failure and an invalid configuration are Error. On the
-        first event of the run the source is checked; when it is not registered in the configured log,
-        or cannot be checked, one warning goes to the run log and the run writes no events but
-        continues. The message passes through Protect-MaintenanceText. A failure to write an entry is
+        completed successfully are Information, completed with warnings and approvals made before
+        their content was local are Warning, and completed with errors, a stage error, a
+        precondition failure and an invalid configuration are Error. On the first event of the run
+        the source is checked; when it is not registered in the configured log, or cannot be
+        checked, one warning goes to the run log and the run writes no events but continues. The message passes through Protect-MaintenanceText. A failure to write an entry is
         logged and never stops the run. Nothing is written while eventLog.enabled is false.
 
     .PARAMETER Channel
@@ -66,7 +66,7 @@ Function Write-MaintenanceEvent {
       ValueFromPipeline = $False,
       ValueFromPipelineByPropertyName = $False
     )]
-    [ValidateSet('runStarted', 'runSucceeded', 'runWarning', 'runFailed', 'stageError', 'preconditionFailure', 'configurationInvalid')]
+    [ValidateSet('runStarted', 'runSucceeded', 'runWarning', 'runFailed', 'stageError', 'preconditionFailure', 'configurationInvalid', 'lateContent')]
     [System.String]
     $Kind,
 
@@ -86,7 +86,7 @@ Function Write-MaintenanceEvent {
 
   # Initialize Variable(s)
   [System.String]$Private:Detail = [System.String]::Empty
-  [System.Collections.Hashtable]$Private:EntryTypes = @{ runStarted = 'Information'; runSucceeded = 'Information'; runWarning = 'Warning'; runFailed = 'Error'; stageError = 'Error'; preconditionFailure = 'Error'; configurationInvalid = 'Error' }
+  [System.Collections.Hashtable]$Private:EntryTypes = @{ runStarted = 'Information'; runSucceeded = 'Information'; runWarning = 'Warning'; runFailed = 'Error'; stageError = 'Error'; preconditionFailure = 'Error'; configurationInvalid = 'Error'; lateContent = 'Warning' }
   [System.String]$Private:Text = [System.String]::Empty
 
   If (($Channel.Enabled -eq $True) -and ($Null -eq $Channel.Available)) {

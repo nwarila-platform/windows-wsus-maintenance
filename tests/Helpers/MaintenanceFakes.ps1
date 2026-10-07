@@ -60,7 +60,11 @@ Function New-FakeUpdateServer {
     [System.Object[]]$Updates = @(),
     [System.String[]]$FailingUpdates = @(),
     [System.String]$UpdatesFailure = '',
-    [System.Boolean]$CultureFails = $False
+    [System.Boolean]$CultureFails = $False,
+    [System.String]$SummariesFailure = '',
+    [System.Boolean]$ExpressFiles = $False,
+    [System.Boolean]$DownloadAll = $False,
+    [System.Boolean]$FilesOnMicrosoftUpdate = $False
   )
 
   $State = [PSCustomObject]@{
@@ -87,9 +91,14 @@ Function New-FakeUpdateServer {
     Culture            = ''
     CultureFails       = $CultureFails
     Cultures           = [System.Collections.Generic.List[System.String]]::new()
+    SummariesFailure   = $SummariesFailure
+    Approvals          = [System.Collections.Generic.List[System.Object]]::new()
+    ApprovalLog        = [System.Collections.Generic.List[System.String]]::new()
+    RemovedApprovals   = [System.Collections.Generic.List[System.String]]::new()
+    Licences           = [System.Collections.Generic.List[System.String]]::new()
   }
   ForEach ($Update In $Updates) {
-    $Update | Add-Member -MemberType NoteProperty -Name State -Value $State -Force
+    $Update.Server = $State
     $State.Updates.Add($Update)
   }
   If ($Null -eq $State.Cleanup) {
@@ -103,7 +112,7 @@ Function New-FakeUpdateServer {
 
   ForEach ($GroupName In $Groups) {
     $Group = [PSCustomObject]@{ Name = $GroupName; Id = [System.Guid]::NewGuid().ToString(); Members = [System.Collections.Generic.List[System.Object]]::new(); State = $State }
-    $Group | Add-Member -MemberType ScriptMethod -Name GetComputerTargets -Value { $this.Members.ToArray() }
+    $Group | Add-Member -MemberType ScriptMethod -Name GetComputerTargets -Value { Param ($IncludeSubgroups) $this.Members.ToArray() }
     $Group | Add-Member -MemberType ScriptMethod -Name AddComputerTarget -Value {
       Param ($Target)
       If ($this.State.FailingComputers -contains $Target.FullDomainName) { Throw ('The computer {0} could not be added to the group.' -f $Target.FullDomainName) }
@@ -128,11 +137,14 @@ Function New-FakeUpdateServer {
   }
 
   $Configuration = [PSCustomObject]@{
-    IsReplicaServer              = $IsReplica
-    SyncFromMicrosoftUpdate      = $SyncFromMicrosoftUpdate
-    UpstreamWsusServerName       = $UpstreamName
-    UpstreamWsusServerPortNumber = $UpstreamPort
-    UpstreamWsusServerUseSsl     = $UpstreamUseSsl
+    IsReplicaServer                = $IsReplica
+    SyncFromMicrosoftUpdate        = $SyncFromMicrosoftUpdate
+    UpstreamWsusServerName         = $UpstreamName
+    UpstreamWsusServerPortNumber   = $UpstreamPort
+    UpstreamWsusServerUseSsl       = $UpstreamUseSsl
+    DownloadExpressPackages        = $ExpressFiles
+    DownloadUpdateBinariesAsNeeded = -not $DownloadAll
+    HostBinariesOnMicrosoftUpdate  = $FilesOnMicrosoftUpdate
   }
 
   $Server = [PSCustomObject]@{
@@ -183,6 +195,14 @@ Function New-FakeUpdateServer {
     @($this.State.Computers | Where-Object -FilterScript { ($Scope.IncludeDownstreamComputerTargets -or (-not $PSItem.Downstream)) -and ($PSItem.LastSyncTime -le $Scope.ToLastSyncTime) })
   }
   $Server | Add-Member -MemberType ScriptMethod -Name GetComputerTargetGroups -Value { $this.State.Groups.ToArray() }
+  $Server | Add-Member -MemberType ScriptMethod -Name GetSummariesPerUpdate -Value {
+    Param ($UpdateScope, $ComputerScope)
+    If ($this.State.SummariesFailure -ne '') { Throw $this.State.SummariesFailure }
+    ForEach ($Update In @($this.State.Updates | Where-Object -FilterScript { -not $PSItem.IsDeclined })) {
+      [PSCustomObject]@{ UpdateId = $Update.Id.UpdateId; NotInstalledCount = $Update.Needed; DownloadedCount = 0; InstalledPendingRebootCount = 0; FailedCount = 0; InstalledCount = 0 }
+    }
+  }
+  $Server | Add-Member -MemberType ScriptMethod -Name GetUpdateApprovals -Value { Param ($Scope) $this.State.Approvals.ToArray() }
   $Server | Add-Member -MemberType ScriptMethod -Name GetConfiguration -Value {
     If ($this.State.ConfigurationFails) { Throw 'The configuration could not be read.' }
     $this.Configuration
@@ -433,8 +453,10 @@ Function New-FakeCleanupResult {
   }
 }
 
-# An update as the WSUS administration API describes it. Decline fails for an update the update
-#   server lists in -FailingUpdates (by title).
+# An update as the WSUS administration API describes it. Decline, Approve and accepting the
+#   licence fail for an update the update server lists in -FailingUpdates (by title). Needed is
+#   the number of clients that need it; Local means its files are on the server (state Ready);
+#   SupersededBy lists the identifiers of the updates that supersede it.
 Function New-FakeUpdate {
   Param (
     [System.String]$Title,
@@ -451,31 +473,75 @@ Function New-FakeUpdate {
     [System.Boolean]$Expired = $False,
     [System.Boolean]$Declined = $False,
     [System.String]$LegacyName = '',
-    [System.Guid]$Id = [System.Guid]::NewGuid()
+    [System.Guid]$Id = [System.Guid]::NewGuid(),
+    [System.Int32]$Needed = 0,
+    [System.Int32]$Revision = 1,
+    [System.Boolean]$Infrastructure = $False,
+    [System.Boolean]$Licence = $False,
+    [System.Boolean]$UserInput = $False,
+    [System.Boolean]$Local = $False,
+    [System.Guid[]]$SupersededBy = @()
   )
 
   $Update = [PSCustomObject]@{
-    Id                        = [PSCustomObject]@{ UpdateId = $Id; RevisionNumber = 1 }
-    Title                     = $Title
-    LegacyName                = $LegacyName
-    KnowledgebaseArticles     = $Kb
-    ProductTitles             = $Products
-    ProductFamilyTitles       = $Families
-    UpdateClassificationTitle = $Classification
-    UpdateSource              = $Source
-    CreationDate              = $Created
-    ArrivalDate               = $Arrived
-    IsSuperseded              = $Superseded
-    HasSupersededUpdates      = $SupersedesOthers
-    IsApproved                = $Approved
-    IsDeclined                = $Declined
-    PublicationState          = $(If ($Expired) { 'Expired' } Else { 'Published' })
-    State                     = $Null
+    Id                                 = [PSCustomObject]@{ UpdateId = $Id; RevisionNumber = $Revision }
+    Title                              = $Title
+    LegacyName                         = $LegacyName
+    KnowledgebaseArticles              = $Kb
+    ProductTitles                      = $Products
+    ProductFamilyTitles                = $Families
+    UpdateClassificationTitle          = $Classification
+    UpdateSource                       = $Source
+    CreationDate                       = $Created
+    ArrivalDate                        = $Arrived
+    IsSuperseded                       = $Superseded
+    HasSupersededUpdates               = $SupersedesOthers
+    IsApproved                         = $Approved
+    IsDeclined                         = $Declined
+    PublicationState                   = $(If ($Expired) { 'Expired' } Else { 'Published' })
+    Needed                             = $Needed
+    IsWsusInfrastructureUpdate         = $Infrastructure
+    RequiresLicenseAgreementAcceptance = $Licence
+    InstallationBehavior               = [PSCustomObject]@{ CanRequestUserInput = $UserInput }
+    SupersededBy                       = $SupersededBy
+    State                              = $(If ($Local) { 'Ready' } Else { 'NotReady' })
+    Server                             = $Null
+  }
+  $Update | Add-Member -MemberType ScriptMethod -Name AcceptLicenseAgreement -Value {
+    If ($this.Server.FailingUpdates -contains $this.Title) { Throw ('The licence agreement of {0} could not be accepted.' -f $this.Title) }
+    $this.RequiresLicenseAgreementAcceptance = $False
+    $this.Server.Licences.Add($this.Title)
+  }
+  $Update | Add-Member -MemberType ScriptMethod -Name Approve -Value {
+    Param ($Action, $Group, $Deadline)
+    If ($this.Server.FailingUpdates -contains $this.Title) { Throw ('The update {0} could not be approved.' -f $this.Title) }
+    If ($this.RequiresLicenseAgreementAcceptance) { Throw 'You must accept the license agreement for this update before you can approve the update for deployment.' }
+    $Approval = [PSCustomObject]@{
+      UpdateId              = $this.Id
+      ComputerTargetGroupId = [System.Guid]$Group.Id
+      Action                = [System.String]$Action
+      Deadline              = $(If ($Null -eq $Deadline) { [System.DateTime]::MaxValue } Else { $Deadline })
+      Server                = $this.Server
+      Title                 = $this.Title
+      GroupName             = $Group.Name
+    }
+    $Approval | Add-Member -MemberType ScriptMethod -Name Delete -Value {
+      $Null = $this.Server.Approvals.Remove($this)
+      $this.Server.RemovedApprovals.Add(('{0}:{1}' -f $this.GroupName, $this.Title))
+    }
+    $this.Server.Approvals.Add($Approval)
+    $this.Server.ApprovalLog.Add(('{0}:{1}:{2}' -f $Group.Name, $this.Title, $(If ($Null -eq $Deadline) { 'none' } Else { $Deadline.ToString('yyyy-MM-dd HH:mm') })))
+    $Approval
+  }
+  $Update | Add-Member -MemberType ScriptMethod -Name GetRelatedUpdates -Value {
+    Param ($Relationship)
+    $Ids = @($this.SupersededBy)
+    @($this.Server.Updates | Where-Object -FilterScript { $Ids -contains $PSItem.Id.UpdateId })
   }
   $Update | Add-Member -MemberType ScriptMethod -Name Decline -Value {
-    If ($this.State.FailingUpdates -contains $this.Title) { Throw ('The update {0} could not be declined.' -f $this.Title) }
+    If ($this.Server.FailingUpdates -contains $this.Title) { Throw ('The update {0} could not be declined.' -f $this.Title) }
     $this.IsDeclined = $True
-    $this.State.DeclinedUpdates.Add($this.Title)
+    $this.Server.DeclinedUpdates.Add($this.Title)
   }
   $Update
 }

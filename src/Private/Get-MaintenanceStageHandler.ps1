@@ -57,6 +57,8 @@ Function Get-MaintenanceStageHandler {
     AcceleratedDecline = { Param ($Context) Invoke-AcceleratedDecline -Context:$Context }
     ExpiredDecline     = { Param ($Context) Invoke-ExpiredDecline -Context:$Context }
     RuleDecline        = { Param ($Context) Invoke-RuleDecline -Context:$Context }
+    ContentStaging     = { Param ($Context) Invoke-ContentStaging -Context:$Context }
+    DeferredApproval   = { Param ($Context) Invoke-DeferredApproval -Context:$Context }
     DeclinedDeletion   = { Param ($Context) Remove-DeclinedUpdate -Context:$Context }
     ObsoleteUpdates    = { Param ($Context) Invoke-ObsoleteUpdateCleanup -Context:$Context }
     BuiltInCleanup     = { Param ($Context) Invoke-WsusBuiltInCleanup -Context:$Context }

@@ -14,6 +14,8 @@ Describe 'Get-MaintenanceStageHandler' {
       AcceleratedDecline = 'Invoke-AcceleratedDecline'
       ExpiredDecline     = 'Invoke-ExpiredDecline'
       RuleDecline        = 'Invoke-RuleDecline'
+      ContentStaging     = 'Invoke-ContentStaging'
+      DeferredApproval   = 'Invoke-DeferredApproval'
       DeclinedDeletion   = 'Remove-DeclinedUpdate'
       ObsoleteUpdates    = 'Invoke-ObsoleteUpdateCleanup'
       BuiltInCleanup     = 'Invoke-WsusBuiltInCleanup'

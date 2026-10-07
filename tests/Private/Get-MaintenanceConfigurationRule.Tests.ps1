@@ -16,7 +16,7 @@ Describe 'Get-MaintenanceConfigurationRule' {
   It 'defines each path once, with a known type and a description' {
     @($script:Rules.Path | Sort-Object -Unique) | Should -HaveCount $script:Rules.Count
     ForEach ($Rule In $script:Rules) {
-      $Rule.Type | Should -BeIn @('Boolean', 'Integer', 'String', 'Path', 'StringArray', 'IntegerArray', 'IndexArray', 'GroupArray', 'RuleArray')
+      $Rule.Type | Should -BeIn @('Boolean', 'Integer', 'String', 'Path', 'StringArray', 'IntegerArray', 'IndexArray', 'GroupArray', 'RuleArray', 'ApprovalGroupArray')
       $Rule.Description | Should -Not -BeNullOrEmpty
     }
   }

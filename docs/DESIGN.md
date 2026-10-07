@@ -9,7 +9,7 @@ repository itself.
 The decided behaviour and defaults are stated here and in the repository's architecture decision
 records ([decision-records](decision-records/README.md)).
 
-Status date: 2026-10-07 (M0 to M7 complete; run control reworked for one nightly run of every
+Status date: 2026-10-07 (M0 to M8 complete; run control reworked for one nightly run of every
 stage).
 
 ---
@@ -298,6 +298,7 @@ registers the source; the script never registers it. The identifiers are configu
 | Each stage error | 1100 | Error | After the stages, one per failed stage |
 | Precondition failure | 1200 | Error | Instead of the events above, for a log, elevation, lock, environment, connection or synchronization-guard failure |
 | Invalid configuration | 1300 | Error | Instead of the events above |
+| Late content | 1400 | Warning | During deferred approval, once per run that approves updates whose files are not yet local, naming each |
 
 The source is checked on the first event of a run. When it is not registered in the configured
 log, or cannot be checked, one warning goes to the run log and the run continues without events
@@ -313,7 +314,7 @@ Each run other than `-ValidateOnly` produces, under its run identifier
 | Run log | `log.folder\WsusMaintenance-<run id>.log` | One line per entry: local time with offset, level, run identifier, stage, message. Run header, overrides, effective configuration, every stage's start, end, status and items, every notice, the outcome and the files written. Filtered by `log.verbosity`. |
 | Text report | `report.folder\WsusMaintenance-<run id>.txt` | Header (server, WSUS version, role, upstream, database, run identifier, profile, dry run, start time with time zone, configuration, overrides, run log); failure, if any; notices by severity, the highest marked `>>>`; WSUS connection time; one section per stage with status, duration, reason, counts, items (at most `report.maxItemsPerSection`; all of them are in the log) and error; totals, duration and status. |
 | HTML report | `report.folder\WsusMaintenance-<run id>.html` | The same, self-contained and HTML-encoded, with notices coloured by severity, links as hyperlinks and commands as preformatted text. |
-| Summary | `summary.folder\WsusMaintenance-<run id>.json` | Validates against [reference/summary.schema.json](reference/summary.schema.json); its counts come from the same report model. |
+| Summary | `summary.folder\WsusMaintenance-<run id>.json` | Validates against [reference/summary.schema.json](reference/summary.schema.json); its counts and each stage's listed items come from the same report model. |
 | Events | Event Log | Section 4.4. |
 | Exit code | Task Scheduler last run result | Section 4.2. |
 
@@ -426,15 +427,17 @@ stages.
 | 5 | AcceleratedDecline | no | REQ-011 |
 | 6 | ExpiredDecline | no | REQ-012 |
 | 7 | RuleDecline | no | REQ-013, 014 |
-| 8 | DeclinedDeletion | yes | REQ-004 |
-| 9 | ObsoleteUpdates | yes | REQ-001, 075 |
-| 10 | BuiltInCleanup | yes | REQ-002, 003 |
-| 11 | SyncHistory | yes | REQ-027 |
-| 12 | StaleComputers | yes | REQ-034 |
-| 13 | Reindex | no | REQ-024 |
-| 14 | IisLogRetention | no | REQ-030, 031 |
-| 15 | ArtifactRetention | no | REQ-032 |
-| 16 | HealthChecks | no | REQ-067 |
+| 8 | ContentStaging | no | LCA-04, 05, 07, 08 |
+| 9 | DeferredApproval | no | LCA-01 to 04, 06 to 09 |
+| 10 | DeclinedDeletion | yes | REQ-004 |
+| 11 | ObsoleteUpdates | yes | REQ-001, 075 |
+| 12 | BuiltInCleanup | yes | REQ-002, 003 |
+| 13 | SyncHistory | yes | REQ-027 |
+| 14 | StaleComputers | yes | REQ-034 |
+| 15 | Reindex | no | REQ-024 |
+| 16 | IisLogRetention | no | REQ-030, 031 |
+| 17 | ArtifactRetention | no | REQ-032 |
+| 18 | HealthChecks | no | REQ-067 |
 
 Cadence ([repo/0006](decision-records/repo/0006-nightly-run-of-every-stage.md)): every enabled stage
 runs on every nightly run, and each acts only on what is due, so a quiet night is short. There are
@@ -466,7 +469,7 @@ One JSON document validated before anything changes
   server's current state what is due.
 - **Extensibility.** A new section is added by appending catalogue rules; the schema, the
   validation and the defaults follow automatically. The `approval` section (section 11.4)
-  arrives this way with milestone M8.
+  arrived this way with milestone M8.
 
 ## 8. Defaults
 
@@ -483,7 +486,7 @@ One JSON document validated before anything changes
 | Retention | IIS logs 90 days. Logs, reports and summaries 90 days and 200 files each. |
 | Health | Certificate warnings at 60, 30, 14 and 7 days. Superseded-update threshold 1500. Application pool: queue length 2000, idle 0, pinging off, private memory 0, recycling 0. Processor count at least 4. |
 | Reporting | Text and HTML files, JSON summary, Event Log. 100 items per section. No mail in release one. |
-| Approval (M8) | Updates at least one client needs; per-group delays counted from the revision creation date; deadline a configurable number of days after approval; pre-staging through an empty staging group; express files off; approve and warn when content is late; superseded updates skipped; exclusion list; licence agreements accepted; Upgrades never approved automatically. |
+| Approval (M8) | Off by default. Updates at least one client needs; per-group delays counted from the revision creation date; deadline a configurable number of days after approval; pre-staging through an empty staging group; express files off; approve and warn when content is late; superseded updates skipped; exclusion list; licence agreements accepted; Upgrades never approved automatically. |
 | Identity | `NT AUTHORITY\SYSTEM`, made SUSDB owner by configuration management. |
 
 ## 9. Release-one requirement cut
@@ -514,7 +517,7 @@ Notes on scope:
 | M5 | SUSDB upkeep: indexes, procedure fix, obsolete deletion, re-index and statistics, sync history, backup, retention, gate, free space | 001, 020–024, 027, 056–058, 075 | **Done** (gate green, 2026-10-07) |
 | M6 | WSUS API cleanup and stale computers | 002, 003, 034, 057 | **Done** (gate green, 2026-10-07) |
 | M7 | Decline engine | 004, 010–016 | **Done** (gate green, 2026-10-07) |
-| M8 | Lifecycle automation: needed-update approval with per-group delays and deadlines, content pre-staging, late-content warning, exclusions, licences | LCA-01 to LCA-09 (section 11) | Planned (decided) |
+| M8 | Lifecycle automation: needed-update approval with per-group delays and deadlines, content pre-staging, late-content warning, exclusions, licences | LCA-01 to LCA-09 (section 11) | **Done** (gate green, 2026-10-07) |
 | M9 | Housekeeping and health | 030–032, 067 | Planned |
 | M10 | Hardening and release readiness: folder protection, dependency check, interruption tests, ADRs, schema release assets | 048, 092, 093, 096, 098 | Planned |
 | M11 | Runner lane: SQL Server Express and WSUS on the hosted Windows runner (spike first) | live evidence | Planned |
@@ -791,38 +794,118 @@ retrieval time-out with zero declines and one Error notice; the arrival window; 
 protected and classification filters, a second run that deletes nothing, failures, the budget,
 dry run and the language guard; and deletion skipped by the backup gate.
 
-Notes for M8 onwards:
+What M8 delivered: the `approval` configuration section (catalogue, schema, generated reference,
+validation of `approval.groups` entries, and the cross-field rules); the stages `ContentStaging`
+(`Invoke-ContentStaging`) and `DeferredApproval` (`Invoke-DeferredApproval`) after the decline
+stages and before declined-update deletion; the helpers `Get-ApprovalCatalog`,
+`Select-ApprovalCandidate`, `Test-UpdateApproval`, `Add-UpdateApproval` and
+`New-ApprovalUnavailableResult`; the late-content event (`eventLog.eventIds.lateContent`, 1400);
+the event channel in the stage context; and the listed items of every stage in the summary. The
+behaviour (section 11.2):
+
+- **Gating.** Both stages are off by default (`approval.enabled`), and a top tier that only
+  synchronizes and serves leaves them off. On a replica they are skipped with "skipped: replica"
+  ("If your WSUS server is running in replica mode, you won't be able to approve updates" [ops]),
+  and with an unknown role with "skipped: server role unknown".
+- **What the stages read** (`Get-ApprovalCatalog`, once per run). The undeclined updates: the
+  decline stages' list when they read every arrival, less what they declined in the run;
+  otherwise a retrieval of its own across every arrival, in the evaluation language. How many
+  clients need each update: `IUpdateServer.GetSummariesPerUpdate`, counting the clients whose
+  state is not installed, downloaded, installed pending a restart, or failed, which is how
+  Microsoft defines a needed update ([needed]). The approvals of the approved updates
+  (`IUpdateServer.GetUpdateApprovals`), indexed by update identifier and revision, so an approval
+  of an earlier revision does not count for a re-released one (LCA-01). The computer groups by
+  name. When any of this cannot be read, or the evaluation language cannot be set (the Upgrades
+  classification could not be recognised reliably), neither stage changes anything and one Error
+  notice says why.
+- **Candidates** (`Select-ApprovalCandidate`, LCA-04, 07, 08). Updates that at least one client
+  needs and that are not expired (an expired update can only be approved for removal
+  ([Approve][approve])), except the Upgrades classification, `approval.excludedClassifications`
+  and `approval.neverApprove` (Knowledge Base numbers or update GUIDs). A superseded update is
+  left out while an update that supersedes it
+  (`GetRelatedUpdates(UpdatesThatSupersedeThisUpdate)`) is approved or is itself a candidate.
+  WSUS infrastructure updates come first ("you can't approve other updates to client systems
+  until the WSUS update is approved" [ops]); the rest follow by revision creation date.
+- **ContentStaging** (LCA-05). Each candidate not approved for install for any group, and not yet
+  staged, is approved for install (`IUpdate.Approve`) for the group `approval.staging.groupName`:
+  with deferred downloads "an update is downloaded only after it's approved" ([plan]), so its
+  files download at once while no client is offered it. The group must exist (it is never
+  created) and must have no members, subgroups included; otherwise nothing is staged and the
+  stage ends in error. Once an update is approved for a configured group and its state is
+  `Ready` (approved, with all files available ([UpdateState][updatestate])), its staging approval
+  is removed (`IUpdateApproval.Delete`). The server's download settings are reported, never
+  changed, because configuration management owns them: a Warning notice when express
+  installation files are on (`DownloadExpressPackages`), when every synchronized update is
+  downloaded (`DownloadUpdateBinariesAsNeeded` off), or when files stay on Microsoft Update
+  (`HostBinariesOnMicrosoftUpdate`) ([IUpdateServerConfiguration][config]).
+- **DeferredApproval** (LCA-01, 02, 03, 06). For each candidate and each group in
+  `approval.groups`, in order, the update is approved for install once `delayDays` have passed
+  since its revision `CreationDate`, unless that revision is already approved for the group. A
+  group that does not exist is reported with an Error notice and never created; the other groups
+  are still approved for. The install deadline is `deadlineDays` after the approval, passed in
+  UTC as the API requires ([Approve][approve]); an update that can request user input
+  (`InstallationBehavior.CanRequestUserInput` ([views])) is approved without one, because "you
+  can't set a deadline for automatic installation for an update if user input is required"
+  ([ops]), and so is a group without `deadlineDays`.
+- **Licence agreements** (LCA-08). An update that requires one has it accepted
+  (`IUpdate.AcceptLicenseAgreement`) before it is staged or approved, since approval fails until
+  it is ([Approve][approve]); with `approval.acceptLicenseAgreements` off, such an update is left
+  unapproved and listed.
+- **Late content** (LCA-06). An update whose state is not `Ready` on its approval date is
+  approved on schedule; one Warning notice and one late-content event (Warning, 1400) name each
+  such approval. Clients wait for the files.
+- **Reporting** (LCA-09). Every staging and approval action is an item of its stage, with its
+  group, delay, deadline and content state, and the summary now carries each stage's listed
+  items as well as its counts. A dry run changes nothing and lists the stagings, removals and
+  approvals it would make as pending. A repeat run stages and approves nothing new, because the
+  approvals already made are read back.
+- **Failures.** A failed staging or approval is listed with its error, the next one proceeds, and
+  the stage ends in error. The time budget is checked before each action.
+
+The gate proves: approval per group after each delay with deadlines in UTC, infrastructure updates
+first, user input without a deadline, licences accepted or the update left unapproved, Upgrades,
+the never-approve list, expired, unneeded and superseded updates left out, supersedence that
+cannot be checked, a re-released revision approved again, late content with a notice and an
+event, a missing group, failures, the budget, dry run, the unreadable catalog and the language
+failure with one notice for both stages; staging into the empty group, updates approved elsewhere
+left out, staging approvals removed once local and approved, a missing or populated staging group,
+each download-setting drift, unreadable settings, licences, dry run, failures and the budget;
+reuse of the decline list, a separate list with an arrival window; the configuration rules; and a
+whole run that stages and approves, lists every action in the report and the summary, and repeats
+nothing.
+
+Notes for M9 onwards:
 
 - **Stage handlers.** Each stage milestone adds its handler to the table in
   `Get-MaintenanceStageHandler`. A handler is a script block with one `-Context` parameter
   (`StageName`, `DryRun`, `Configuration`, `Deadline`, `RunStart`, `Log`, `Server`,
-  `RemoveCustomIndexes`) that returns `[PSCustomObject]@{ Status; Counts; Items; Message; Notices }`,
-  built with `New-MaintenanceStageResult`. A stage that works item by item calls
+  `RemoveCustomIndexes`, `Events`) that returns
+  `[PSCustomObject]@{ Status; Counts; Items; Message; Notices }`, built with
+  `New-MaintenanceStageResult`. A stage that works item by item calls
   `Test-MaintenanceBudget -Deadline:$Context.Deadline` between items and
   `Write-MaintenanceProgress -Log:$Context.Log -BatchSize:$Context.Configuration.run.progressBatchSize`
   for each item. In a dry run the stage reads `Context.DryRun`, changes nothing and reports what it
-  would change.
+  would change. A stage that needs its own event writes it through `Context.Events` with
+  `Write-MaintenanceEvent` and a new `eventLog.eventIds` key.
 - **Secrets.** A feature that reads a secret (none in release one) calls
   `Register-MaintenanceSecret` as soon as it has it.
 - **Server facts.** `Context.Server` carries `Tier`, `Role`, `Environment`, `Permission`,
-  `UpdateServer` (the connected `IUpdateServer`, also returned by `Get-WsusConnection`),
-  `Database` (the open SUSDB connection, also returned by `Get-SusdbConnection`) and
-  `CommandTimeoutSeconds`; the decline stages add `DeclineCatalog`. SUSDB work goes through
-  `Invoke-SusdbCommand -Connection:$Context.Server.Database -TimeoutSeconds:$Context.Server.CommandTimeoutSeconds -Log:$Context.Log`
-  with parameters, never concatenated values; identifiers that cannot be parameters are quoted
-  with `ConvertTo-SqlIdentifier`. Scope objects of the WSUS API come from
+  `UpdateServer` (also returned by `Get-WsusConnection`), `Database` (also returned by
+  `Get-SusdbConnection`) and `CommandTimeoutSeconds`; the decline and approval stages add
+  `DeclineCatalog` and `ApprovalCatalog`. SUSDB work goes through `Invoke-SusdbCommand` with
+  parameters, never concatenated values; identifiers that cannot be parameters are quoted with
+  `ConvertTo-SqlIdentifier`. Scope objects of the WSUS API come from
   `New-WsusAdministrationObject`, which tests replace.
-- **Updates.** The approval stages (M8) read updates through `Get-WsusUpdateRecord` (language set
-  and restored, records with every attribute) or the run's `Get-DeclineCatalog`, and use
-  `Test-UpdateIdentity` for their exclusion list.
-- **Retries.** `Test-MaintenanceTimeout` tells a time-out from any other failure, for stages that
-  retry only time-outs.
-- **Tier gating.** Done in `Get-MaintenanceStagePlan`: on a replica the decline policies,
-  declined-update deletion and stale-computer moves are skipped with "skipped: replica", and with
-  an unknown tier with "skipped: server role unknown"; approval stages (M8) join the gated list.
+- **Download-setting drift.** Content staging reports drift from fixed expectations (express
+  files off, deferred downloads on, files stored locally). Health checks (M9) add the
+  per-deployment expected values section 11.4 describes, for servers that do not stage.
+- **Retries.** `Test-MaintenanceTimeout` tells a time-out from any other failure.
+- **Tier gating.** Done in `Get-MaintenanceStagePlan`: on a replica the decline and approval
+  stages, declined-update deletion and stale-computer moves are skipped with "skipped: replica",
+  and with an unknown tier with "skipped: server role unknown".
 - **Run result.** Configuration failures throw `ConfigurationInvalid` with the full validation
   summary as `TargetObject`; precondition failures throw `PreconditionFailed` or `LockHeld`. A
-  completed run returns `WsusMaintenance.RunResult` with `Stages` (16 outcomes), `Notices`, `Run`
+  completed run returns `WsusMaintenance.RunResult` with `Stages` (18 outcomes), `Notices`, `Run`
   (run identifier, stages listed with `-Stage`, start, end, duration, deadline, dry-run flag and
   the paths of the log, reports and summary) and `Validation`.
 
@@ -831,7 +914,7 @@ Notes for M8 onwards:
 Requirement: automate WSUS end to end. Approve the updates clients need a configurable number of
 days after release, and download their content as early as possible, from the moment a client
 reports needing an update, without making it installable before its approval date. The design
-below is decided and is built in milestone M8.
+below was built in milestone M8 (section 10).
 
 ### 11.1 Behaviour per tier
 
@@ -883,7 +966,7 @@ Figures Microsoft publishes: about 10 GB of on-premises UUP content per Windows 
 processor architecture, and at least 20 GB (40 GB recommended) for local content storage ([plan]).
 No figure is given for express-file size beyond "larger" on the server.
 
-### 11.4 Configuration sketch (added with M8)
+### 11.4 Configuration (M8)
 
 ```json
 "approval": {
@@ -894,17 +977,20 @@ No figure is given for express-file size beyond "larger" on the server.
   ],
   "staging": { "enabled": true, "groupName": "Content Staging" },
   "neverApprove": [ "KB0000000" ],
-  "excludedClassifications": [ "Upgrades" ],
+  "excludedClassifications": [ "Drivers" ],
   "acceptLicenseAgreements": true
 }
 ```
 
-Fixed, not configurable: candidates are client-needed updates only, the delay counts from the
-revision creation date, late content is approved with a warning, superseded updates are skipped, and
-Upgrades stay excluded (`excludedClassifications` may add to it but cannot remove it). New stages
-`ContentStaging` and `DeferredApproval` join the stage catalogue after the decline stages and before
-declined-update deletion. Download-setting drift checks (express files off and
-download-only-when-approved on, with per-deployment expected values) join the health checks.
+`approval.enabled` is off by default. `deadlineDays` is optional; without it a group's approvals
+carry no deadline. Fixed, not configurable: candidates are client-needed updates only, the delay
+counts from the revision creation date, late content is approved with a warning, superseded
+updates are skipped while their superseding update is approved or eligible, and Upgrades stay
+excluded (`excludedClassifications` adds to it and cannot remove it). The stages `ContentStaging`
+and `DeferredApproval` follow the decline stages and precede declined-update deletion. Content
+staging reports download-setting drift from fixed expectations (express files off, deferred
+downloads on, files stored locally); the health checks (M9) add per-deployment expected values for
+servers that do not stage.
 
 ## 12. Open items and risks
 
@@ -926,6 +1012,17 @@ download-only-when-approved on, with per-deployment expected values) join the he
   - which SUSDB operations and built-in cleanup options a replica refuses, and with what error;
   - which exceptions a built-in cleanup time-out raises through the administration API, so that
     the retry test recognises them;
+  - that the per-update summaries report needed counts for updates that are not yet approved
+    (Microsoft's description of needed updates dates from approvals for detection), which the
+    candidate list of the approval stages relies on;
+  - the state an unapproved update reports and how quickly an approval for the empty staging
+    group starts its download on a downstream server with deferred downloads;
+  - whether an approval's deadline is accepted in UTC as documented, and how
+    `CanRequestUserInput` is set on updates that ask for input (Microsoft's property page carries a
+    copy of the restart description);
+  - whether `AcceptLicenseAgreement` succeeds for an update whose licence text is not yet
+    downloaded, before staging has fetched it;
+  - how a staging approval removal interacts with the built-in unneeded-content cleanup;
   - how long `GetUpdates` takes over the undeclined updates of a large server, and the memory the
     WsusPool application pool needs for it;
   - that setting `PreferredCulture` to `en` returns English titles and category names on a server
@@ -968,6 +1065,11 @@ download-only-when-approved on, with per-deployment expected values) join the he
   with an unlimited arrival window this is the call most likely to exhaust the WsusPool
   application pool. `declines.arrivalWindowDays` narrows it, as Microsoft's script does with six
   months.
+- **Approvals are hard to undo in bulk.** Approval stays off by default, the exclusion lists and
+  the never-approve list are the safety levers, and a dry run lists every approval first.
+- **Staging group membership.** An approval for the staging group is offered to any computer that
+  joins it. The stage refuses to stage into a group with members, but a computer that joins
+  between runs is offered the staged updates until the next run finds it.
 - **Stale-computer guard at zero.** `staleComputers.guardCount` and `guardPercent` are upper
   limits taken literally: a value of 0 means any selection exceeds the guard, so nothing is
   removed without `staleComputers.override`.
@@ -998,6 +1100,10 @@ download-only-when-approved on, with per-deployment expected values) join the he
 [culture]: https://learn.microsoft.com/previous-versions/windows/desktop/ms751963(v=vs.85)
 [declinesuperseded]: https://learn.microsoft.com/troubleshoot/mem/configmgr/update-management/decline-superseded-updates
 [deleteupdate]: https://learn.microsoft.com/previous-versions/windows/desktop/aa349863(v=vs.85)
+[needed]: https://learn.microsoft.com/previous-versions/windows/desktop/ms744621(v=vs.85)
+[approve]: https://learn.microsoft.com/previous-versions/windows/desktop/ms747129(v=vs.85)
+[updatestate]: https://learn.microsoft.com/previous-versions/windows/desktop/ms752993(v=vs.85)
+[views]: https://learn.microsoft.com/previous-versions/windows/desktop/bb410149(v=vs.85)
 [settings]: https://learn.microsoft.com/security-updates/windowsupdateservices/18125970
 [release]: https://learn.microsoft.com/windows/release-health/windows-server-release-info
 [adminproxy]: https://learn.microsoft.com/previous-versions/windows/desktop/ms745830(v=vs.85)

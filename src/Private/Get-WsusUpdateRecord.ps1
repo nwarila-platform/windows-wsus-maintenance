@@ -18,13 +18,17 @@ Function Get-WsusUpdateRecord {
 
     .DESCRIPTION
         Sets the connection's preferred language to declines.evaluationLanguage, so that titles and
-        category names arrive in one fixed language whatever the server's display language, retrieves the
-        updates (IUpdateServer.GetUpdates with an UpdateScope) and turns each into a decline record, then
-        restores the previous language preference. Without -Declined it retrieves the updates that are
-        not declined, in every other approval state (not approved, latest revision approved, stale
-        approvals), limited to the declines.arrivalWindowDays window when one is set; with -Declined it
-        retrieves the declined updates. A language that cannot be set is reported in LanguageError and the
-        retrieval still runs; a retrieval that fails or times out is reported in Error with no records.
+        category names arrive in one fixed language whatever the server's display language,
+        retrieves the updates (IUpdateServer.GetUpdates with an UpdateScope) and turns each into a
+        decline record, then restores the previous language preference. Without -Declined it
+        retrieves the updates that are not declined, in every other approval state (not approved,
+        latest revision approved, stale approvals), limited to the declines.arrivalWindowDays window
+        when one is set unless -AllArrivals is given; with -Declined it retrieves the declined
+        updates. A language that cannot be set is reported in LanguageError and the retrieval still
+        runs; a retrieval that fails or times out is reported in Error with no records.
+
+    .PARAMETER AllArrivals
+        Ignore declines.arrivalWindowDays and retrieve every update that is not declined.
 
     .PARAMETER Context
         The stage context.
@@ -48,6 +52,16 @@ Function Get-WsusUpdateRecord {
   )]
   [OutputType([PSCustomObject])]
   Param (
+    [Parameter(
+      DontShow = $False,
+      Mandatory = $False,
+      ParameterSetName = 'default',
+      ValueFromPipeline = $False,
+      ValueFromPipelineByPropertyName = $False
+    )]
+    [System.Management.Automation.SwitchParameter]
+    $AllArrivals,
+
     [Parameter(
       DontShow = $False,
       Mandatory = $True,
@@ -108,7 +122,7 @@ Function Get-WsusUpdateRecord {
       $Scope.ApprovedStates = 'Declined'
     } Else {
       $Scope.ApprovedStates = 'NotApproved, LatestRevisionApproved, HasStaleUpdateApprovals'
-      If ($Window -gt 0) {
+      If (($Window -gt 0) -and ($AllArrivals.IsPresent -eq $False)) {
         $Scope.FromArrivalDate = $Context.RunStart.ToUniversalTime().AddDays(-$Window)
       }
     }
