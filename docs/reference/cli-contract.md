@@ -14,7 +14,8 @@ by the next run.
 | --- | --- | --- | --- |
 | `-ConfigPath` | `System.String` | `%ProgramData%\NWarila\WsusMaintenance\maintenance.json` | Configuration document to read. |
 | `-Stage` | `System.String[]` | every enabled stage | Run only the listed stages, still in catalogue order. Stage names are matched without regard to case and recorded in their canonical spelling; a repeated or unknown name is a configuration error. A listed stage that configuration disables is still skipped. |
-| `-DryRun` | Switch | off | Simulate: report what each stage would change without changing anything. |
+| `-DryRun` | Switch | off | Simulate: report what each stage would change without changing anything; SUSDB receives only reads. |
+| `-RemoveCustomIndexes` | Switch | off | Drop the custom SUSDB indexes this script created, and only those, instead of creating missing ones. Runs the `CustomIndexes` stage alone unless `-Stage` is given, which must then include `CustomIndexes`; otherwise it is a configuration error. |
 | `-ReportFolder` | `System.String` | configuration | Report folder for this run; an absolute path. |
 | `-ReportFormat` | `Text`, `Html` | configuration | Report formats for this run. |
 | `-Verbosity` | `Error`, `Warning`, `Information`, `Verbose`, `Debug` | configuration | Log verbosity for this run. |
@@ -61,6 +62,13 @@ error boundary within the time budget, restarts the synchronization it stopped, 
 database connection, releases the lock on every path, and saves the report and the summary. A
 stage the budget stops from starting is reported as `NotRun` with a warning and runs again on the
 next run.
+
+Before the first stage that deletes or alters SUSDB content (`CustomIndexes`, `DeleteUpdateFix`,
+`DeclinedDeletion`, `ObsoleteUpdates`, `BuiltInCleanup`, `SyncHistory`, `StaleComputers`), the
+backup gate is checked once: a backup made by this run, or a full SUSDB backup recorded within
+`backup.freshnessHours`, satisfies it. When `backup.gate` is `Required` and it is not satisfied,
+those stages are skipped with the reason "skipped: no recent backup" and a High notice;
+`Advisory` runs them with a Warning notice; `Off` skips the check.
 
 These stop the run with a failure report and summary (what happened, the point reached, what to
 do), the matching event and exit code `3`, or `4` for an invalid configuration: a log folder that

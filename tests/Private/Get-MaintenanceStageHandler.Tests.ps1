@@ -5,10 +5,32 @@
 Describe 'Get-MaintenanceStageHandler' {
   BeforeAll {
     . (Join-Path -Path $PSScriptRoot -ChildPath '../../build/Invoke-WsusMaintenance.Functions.ps1')
+
+    $script:Upkeep = [ordered]@{
+      Backup          = 'Backup-Susdb'
+      CustomIndexes   = 'Set-SusdbCustomIndex'
+      DeleteUpdateFix = 'Set-DeleteUpdateProcedureFix'
+      ObsoleteUpdates = 'Invoke-ObsoleteUpdateCleanup'
+      SyncHistory     = 'Remove-SyncHistory'
+      Reindex         = 'Invoke-SusdbIndexMaintenance'
+    }
   }
 
-  It 'has no handler yet for any stage in this release' {
-    ForEach ($Stage In @(Get-MaintenanceStageCatalog)) {
+  It 'hands each SUSDB upkeep stage the context through its function' {
+    ForEach ($Stage In $script:Upkeep.Keys) {
+      $Function = $script:Upkeep[$Stage]
+      Mock -CommandName $Function -MockWith { [PSCustomObject]@{ Status = 'Success'; From = $Context.StageName } }
+
+      $Handler = Get-MaintenanceStageHandler -Name $Stage
+      $Answer = & $Handler ([PSCustomObject]@{ StageName = $Stage })
+
+      $Answer.From | Should -Be $Stage -Because $Stage
+      Should -Invoke -CommandName $Function -Times 1 -Exactly
+    }
+  }
+
+  It 'has no handler yet for the stages a later release delivers' {
+    ForEach ($Stage In @(Get-MaintenanceStageCatalog | Where-Object -FilterScript { -not $script:Upkeep.Contains($PSItem.Name) })) {
       Get-MaintenanceStageHandler -Name $Stage.Name | Should -BeNullOrEmpty -Because $Stage.Name
     }
   }

@@ -208,14 +208,14 @@
           "default": "Auto"
         },
         "minimumKept": {
-          "description": "Most recent backup files always kept. Unit: files.",
+          "description": "Most recent backup files always kept. Zero means no minimum; with both limits zero every file is kept. Unit: files.",
           "type": "integer",
           "minimum": 0,
           "maximum": 1000,
           "default": 7
         },
         "maximumAgeDays": {
-          "description": "Backup files older than this and outside the most recent set are deleted. Unit: days.",
+          "description": "Backup files this many days old or older, by the date in their name, and outside the most recent set are deleted. Zero means no age limit. Unit: days.",
           "type": "integer",
           "minimum": 0,
           "maximum": 3650,

@@ -15,7 +15,6 @@ $Script:Message += @{
   'Test-SusdbPermission.NoRow'             = 'the permission query returned no row'
   'Test-SusdbPermission.NotChecked'        = 'not checked: {0}'
   'Test-SusdbPermission.Owner'             = 'database owner'
-  'Test-SusdbPermission.OwnerOrSysadmin'   = 'database owner or sysadmin'
   'Test-SusdbPermission.Shortfall'         = '{0} (for {1})'
   'Test-SusdbPermission.SomeMissing'       = 'login {0}, {1}; missing: {2}'
   'Test-SusdbPermission.Sysadmin'          = 'sysadmin'
@@ -32,8 +31,10 @@ Function Test-SusdbPermission {
         for Backup; ALTER on dbo.tbLocalizedPropertyForRevision and dbo.tbRevisionSupersedesUpdate (to
         create the custom indexes) for CustomIndexes; ALTER on dbo.spDeleteUpdate for DeleteUpdateFix;
         EXECUTE on dbo.spGetObsoleteUpdatesToCleanup and dbo.spDeleteUpdate for ObsoleteUpdates; EXECUTE
-        on dbo.spDeleteUpdate for DeclinedDeletion; DELETE on dbo.tbEventInstance for SyncHistory; and
-        database owner or sysadmin (which sp_updatestats requires) for Reindex. A stage with a missing
+        on dbo.spDeleteUpdate for DeclinedDeletion; and DELETE on dbo.tbEventInstance for SyncHistory.
+        Whether the identity is the database owner or sysadmin, which sp_updatestats requires, is
+        returned in OwnerOrSysadmin: the Reindex stage still defragments without it and only skips
+        the statistics update, with a notice. A stage with a missing
         permission is skipped with a notice before any work starts. The script never grants permissions
         or changes ownership. When the permissions cannot be queried, Checked is false and no stage is
         skipped for permissions; each then reports its own failure.
@@ -103,6 +104,7 @@ Function Test-SusdbPermission {
   [System.Boolean]$Private:Checked = $False
   [System.String]$Private:ErrorText = [System.String]::Empty
   [System.Collections.Hashtable]$Private:Granted = $Null
+  [System.String]$Private:LoginName = [System.String]::Empty
   [System.Collections.Generic.List[System.String]]$Private:Missing = $Null
   [System.Collections.Hashtable]$Private:MissingByStage = $Null
   [System.String]$Private:Query = @(
@@ -118,7 +120,8 @@ Function Test-SusdbPermission {
     '  HAS_PERMS_BY_NAME(N''dbo.spDeleteUpdate'', N''OBJECT'', N''EXECUTE'') AS CanExecuteDeleteProcedure,',
     '  HAS_PERMS_BY_NAME(N''dbo.tbEventInstance'', N''OBJECT'', N''DELETE'') AS CanDeleteEvents'
   ) -join [System.Environment]::NewLine
-  [System.Collections.Specialized.OrderedDictionary]$Private:Required = [ordered]@{ Backup = @('Backup'); CustomIndexes = @('AlterIndexTables'); DeleteUpdateFix = @('AlterProcedure'); DeclinedDeletion = @('ExecuteDelete'); ObsoleteUpdates = @('ExecuteObsolete', 'ExecuteDelete'); SyncHistory = @('DeleteSyncHistory'); Reindex = @('OwnerOrSysadmin') }
+  [System.Collections.Specialized.OrderedDictionary]$Private:Required = [ordered]@{ Backup = @('Backup'); CustomIndexes = @('AlterIndexTables'); DeleteUpdateFix = @('AlterProcedure'); DeclinedDeletion = @('ExecuteDelete'); ObsoleteUpdates = @('ExecuteObsolete', 'ExecuteDelete'); SyncHistory = @('DeleteSyncHistory') }
+  [System.Boolean]$Private:OwnerOrSysadmin = $False
   [System.Object]$Private:Row = $Null
   [System.Collections.Generic.List[System.String]]$Private:Shortfalls = $Null
   [System.String]$Private:Standing = [System.String]::Empty
@@ -173,16 +176,20 @@ Function Test-SusdbPermission {
     }
 
     $Checked = $True
+    $LoginName = [System.String]$Row.LoginName
+    $OwnerOrSysadmin = $Granted['OwnerOrSysadmin']
   } Catch {
     $ErrorText = $PSItem.Exception.GetBaseException().Message
     $Summary = $Script:Message['Test-SusdbPermission.NotChecked'] -f $ErrorText
   }
 
   [PSCustomObject]$Result = [PSCustomObject]@{
-    Checked        = [System.Boolean]$Checked
-    MissingByStage = $MissingByStage
-    Summary        = [System.String]$Summary
-    Error          = [System.String]$ErrorText
+    Checked         = [System.Boolean]$Checked
+    LoginName       = [System.String]$LoginName
+    OwnerOrSysadmin = [System.Boolean]$OwnerOrSysadmin
+    MissingByStage  = $MissingByStage
+    Summary         = [System.String]$Summary
+    Error           = [System.String]$ErrorText
   }
 
   $Result

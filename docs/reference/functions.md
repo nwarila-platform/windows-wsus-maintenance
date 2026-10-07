@@ -3,9 +3,17 @@
 Every function in `src/`, in alphabetical order. Each function's `HelpUri` links to its entry
 here; the comment-based help in the source is the full reference.
 
+## Backup-Susdb
+
+Private. Creates the nightly full SUSDB backup and applies the backup retention.
+
 ## Connect-MaintenanceServer
 
 Private. Connects to the WSUS administration interface and to SUSDB.
+
+## ConvertTo-DeleteUpdateFix
+
+Private. Works out whether spDeleteUpdate carries Microsoft's fix, and the edited definition if not.
 
 ## ConvertTo-MaintenanceConfigurationSchema
 
@@ -31,6 +39,10 @@ Private. Renders a run report as a self-contained HTML page.
 
 Private. Renders a run report as plain text.
 
+## ConvertTo-SqlIdentifier
+
+Private. Quotes a name as a SQL Server identifier.
+
 ## Disconnect-MaintenanceServer
 
 Private. Closes the SUSDB connection of a run.
@@ -42,6 +54,10 @@ Private. Takes the system-wide run lock or stops the run.
 ## Exit-MaintenanceLock
 
 Private. Releases the system-wide run lock.
+
+## Get-BackupDestinationSpace
+
+Private. Returns the free space of the volume holding the backup folder.
 
 ## Get-MaintenanceConfigurationRule
 
@@ -87,6 +103,14 @@ Private. Decides, for every stage in its fixed order, whether it runs.
 
 Private. Returns the current local time.
 
+## Get-SusdbConnection
+
+Private. Returns the open SUSDB connection a stage works with.
+
+## Get-SusdbIndexAction
+
+Private. Chooses how to defragment one index, as Microsoft's WSUS re-index script does.
+
 ## Get-WsusEnvironment
 
 Private. Discovers where SUSDB lives and whether this server is a supported combination.
@@ -115,9 +139,17 @@ Private. Plans and executes the stages of one run.
 
 Private. Runs one planned stage inside its own error boundary.
 
+## Invoke-ObsoleteUpdateCleanup
+
+Private. Deletes obsolete updates one at a time with the SUSDB procedures Microsoft documents.
+
 ## Invoke-SusdbCommand
 
 Private. Runs one parameterized command against SUSDB.
+
+## Invoke-SusdbIndexMaintenance
+
+Private. Defragments fragmented SUSDB indexes and then updates statistics.
 
 ## Invoke-SynchronizationGuard
 
@@ -167,6 +199,10 @@ Private. Creates the typed result object one maintenance run emits.
 
 Private. Creates the record of what one stage did.
 
+## New-MaintenanceStageResult
+
+Private. Creates the result a stage handler returns.
+
 ## New-SqlConnection
 
 Private. Opens a connection to SQL Server.
@@ -195,6 +231,14 @@ Private. Reads and parses the configuration document.
 
 Private. Registers a secret value so that it is never written anywhere.
 
+## Remove-BackupFile
+
+Private. Applies the backup retention to the backup files this script created.
+
+## Remove-SyncHistory
+
+Private. Deletes old synchronization-history records from SUSDB.
+
 ## Resolve-MaintenanceOutputFolder
 
 Private. Chooses the folder a report or summary is saved to.
@@ -219,9 +263,21 @@ Private. Restarts the synchronization the run stopped and restores the schedule 
 
 Private. Saves the rendered report files of one run.
 
+## Set-DeleteUpdateProcedureFix
+
+Private. Applies Microsoft's fix for the slow spDeleteUpdate procedure when it is missing.
+
+## Set-SusdbCustomIndex
+
+Private. Ensures the non-clustered SUSDB indexes Microsoft recommends exist.
+
 ## Stop-MaintenanceRun
 
 Private. Ends a run that failed a precondition, after reporting the failure.
+
+## Test-BackupGate
+
+Private. Decides whether stages that alter SUSDB may run, given the backup state.
 
 ## Test-MaintenanceBudget
 

@@ -76,6 +76,10 @@ Function Invoke-WsusMaintenance {
     .PARAMETER DryRun
         Report intended changes without changing anything.
 
+    .PARAMETER RemoveCustomIndexes
+        Drop the custom indexes this script created (and only those) instead of creating
+        missing ones; runs the CustomIndexes stage only unless -Stage lists more.
+
     .PARAMETER ReportFolder
         Report folder for this run.
 
@@ -127,6 +131,16 @@ Function Invoke-WsusMaintenance {
     )]
     [System.Management.Automation.SwitchParameter]
     $DryRun,
+
+    [Parameter(
+      DontShow = $False,
+      Mandatory = $False,
+      ParameterSetName = 'default',
+      ValueFromPipeline = $False,
+      ValueFromPipelineByPropertyName = $False
+    )]
+    [System.Management.Automation.SwitchParameter]
+    $RemoveCustomIndexes,
 
     [Parameter(
       DontShow = $False,
@@ -257,7 +271,7 @@ Function Invoke-WsusMaintenance {
   $OverrideParameters = @{
     Configuration = $Effective
   }
-  ForEach ($Name In @('ConfigPath', 'DryRun', 'ReportFolder', 'ReportFormat', 'Stage', 'Verbosity')) {
+  ForEach ($Name In @('ConfigPath', 'DryRun', 'RemoveCustomIndexes', 'ReportFolder', 'ReportFormat', 'Stage', 'Verbosity')) {
     If ($PSBoundParameters.ContainsKey($Name) -eq $True) {
       $OverrideParameters[$Name] = $PSBoundParameters[$Name]
     }
@@ -514,6 +528,7 @@ Function Invoke-WsusMaintenance {
       $Execution = Invoke-MaintenanceRun `
         -Configuration:$Resolution.Configuration `
         -Log:$Output.Log `
+        -RemoveCustomIndexes:$Resolution.RemoveCustomIndexes `
         -RunStart:$RunStart `
         -Server:$Server `
         -Stage:$Resolution.Stages

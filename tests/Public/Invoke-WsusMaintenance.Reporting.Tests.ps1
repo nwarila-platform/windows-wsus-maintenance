@@ -72,6 +72,9 @@ Describe 'Invoke-WsusMaintenance reporting guarantees' {
       { [PSCustomObject]@{ Status = 'Success'; Counts = @{ Checked = 6 } } }
     }
 
+    # An earlier backup is recent enough, so the failed backup above does not close the gate.
+    Mock -CommandName Test-BackupGate -MockWith { [PSCustomObject]@{ Satisfied = $True; Mode = 'Required'; Detail = 'last full backup finished 2026-11-02 00:30' } }
+
     $script:Result = Invoke-Run
     $script:Text = Get-Content -LiteralPath ($script:Result.Run.Artifacts.Reports | Where-Object -FilterScript { $PSItem -like '*.txt' }) -Raw
     $script:Html = Get-Content -LiteralPath ($script:Result.Run.Artifacts.Reports | Where-Object -FilterScript { $PSItem -like '*.html' }) -Raw

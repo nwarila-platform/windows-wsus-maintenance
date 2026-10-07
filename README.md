@@ -6,10 +6,12 @@ reporting, packaged as one Windows PowerShell 5.1 script that a scheduled task r
 
 > **Status: pre-release.** Milestones M0 (scaffold), M1 (configuration and validation), M2 (run
 > control: stage plan, lock, elevation, time budget), M3 (run log, text and HTML reports, JSON
-> summary, events, failure reports) and M4 (discovery, connections, server tier, database
-> permissions, synchronization guard) are complete; no maintenance stage is implemented yet, so a
-> run reports every stage as not available. See [docs/DESIGN.md](docs/DESIGN.md) for the design
-> and milestone plan.
+> summary, events, failure reports), M4 (discovery, connections, server tier, database
+> permissions, synchronization guard) and M5 (SUSDB upkeep: backup and retention, backup gate,
+> custom indexes, the spDeleteUpdate fix, obsolete-update deletion, sync-history cleanup,
+> re-index and statistics) are complete. The WSUS API cleanup, declines, housekeeping and health
+> stages are not implemented yet and are reported as not available. See
+> [docs/DESIGN.md](docs/DESIGN.md) for the design and milestone plan.
 
 ## Supported servers
 

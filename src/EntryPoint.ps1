@@ -18,6 +18,10 @@
   .PARAMETER DryRun
       Report intended changes without changing anything.
 
+  .PARAMETER RemoveCustomIndexes
+      Drop the custom indexes this script created (and only those) instead of creating
+      missing ones; runs the CustomIndexes stage only unless -Stage lists more.
+
   .PARAMETER ReportFolder
       Report folder for this run.
 
@@ -65,6 +69,16 @@ Param (
   )]
   [System.Management.Automation.SwitchParameter]
   $DryRun,
+
+  [Parameter(
+    DontShow = $False,
+    Mandatory = $False,
+    ParameterSetName = 'default',
+    ValueFromPipeline = $False,
+    ValueFromPipelineByPropertyName = $False
+  )]
+  [System.Management.Automation.SwitchParameter]
+  $RemoveCustomIndexes,
 
   [Parameter(
     DontShow = $False,
