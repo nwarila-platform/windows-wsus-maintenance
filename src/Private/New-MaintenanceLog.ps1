@@ -4,7 +4,7 @@
 
 # Message(s)
 $Script:Message += @{
-  'New-MaintenanceLog.Unwritable' = "The log folder '{0}' cannot be written: {1}"
+  'New-MaintenanceLog.Unwritable' = "The log folder '{0}' cannot be used: {1}"
 }
 
 Function New-MaintenanceLog {
@@ -17,10 +17,19 @@ Function New-MaintenanceLog {
         identifier. The returned log carries the path, the run identifier, the verbosity threshold and
         a count of entries that could not be written. When the folder or the file cannot be written,
         Path is empty and Error explains why; the caller then aborts the run with the
-        precondition-failure code, as a run without a log must not change anything.
+        precondition-failure code, as a run without a log must not change anything. With -Protect
+        the folder is created protected and a folder that other principals can change is not used
+        (Initialize-MaintenanceFolder); with -AllowPermissive as well, such a folder is used and
+        FolderWarning says so.
+
+    .PARAMETER AllowPermissive
+        Use a log folder that other principals can change, with a warning.
 
     .PARAMETER Folder
         Configured log folder.
+
+    .PARAMETER Protect
+        Create the folder protected and refuse one that other principals can change.
 
     .PARAMETER RunId
         Run identifier.
@@ -46,6 +55,16 @@ Function New-MaintenanceLog {
   Param (
     [Parameter(
       DontShow = $False,
+      Mandatory = $False,
+      ParameterSetName = 'default',
+      ValueFromPipeline = $False,
+      ValueFromPipelineByPropertyName = $False
+    )]
+    [System.Management.Automation.SwitchParameter]
+    $AllowPermissive,
+
+    [Parameter(
+      DontShow = $False,
       Mandatory = $True,
       ParameterSetName = 'default',
       ValueFromPipeline = $False,
@@ -54,6 +73,16 @@ Function New-MaintenanceLog {
     [ValidateNotNullOrEmpty()]
     [System.String]
     $Folder,
+
+    [Parameter(
+      DontShow = $False,
+      Mandatory = $False,
+      ParameterSetName = 'default',
+      ValueFromPipeline = $False,
+      ValueFromPipelineByPropertyName = $False
+    )]
+    [System.Management.Automation.SwitchParameter]
+    $Protect,
 
     [Parameter(
       DontShow = $False,
@@ -87,7 +116,7 @@ Function New-MaintenanceLog {
   [PSCustomObject]$Private:Ready = $Null
   [PSCustomObject]$Private:Result = $Null
 
-  $Ready = Initialize-MaintenanceFolder -Path:$Folder
+  $Ready = Initialize-MaintenanceFolder -AllowPermissive:$AllowPermissive -Path:$Folder -Protect:$Protect
 
   If ([System.String]::IsNullOrEmpty($Ready.Error) -eq $True) {
     Try {
@@ -102,12 +131,13 @@ Function New-MaintenanceLog {
   }
 
   [PSCustomObject]$Result = [PSCustomObject]@{
-    Path        = [System.String]$Path
-    RunId       = [System.String]$RunId
-    Verbosity   = [System.String]$Verbosity
-    Threshold   = [System.Int32]$Levels[$Verbosity]
-    WriteErrors = [System.Int32]0
-    Error       = [System.String]$ErrorText
+    Path          = [System.String]$Path
+    RunId         = [System.String]$RunId
+    Verbosity     = [System.String]$Verbosity
+    Threshold     = [System.Int32]$Levels[$Verbosity]
+    WriteErrors   = [System.Int32]0
+    Error         = [System.String]$ErrorText
+    FolderWarning = [System.String]$Ready.Warning
   }
 
   $Result

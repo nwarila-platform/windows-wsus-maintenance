@@ -10,13 +10,15 @@ $Script:Message += @{
 Function Stop-MaintenanceRun {
   <#
     .SYNOPSIS
-        Ends a run that failed a precondition, after reporting the failure.
+        Ends a run that stopped early, after reporting the failure.
 
     .DESCRIPTION
         Logs the failure, publishes a failure report and summary that state what happened, the point
         the run reached and what to do (Publish-MaintenanceRunOutput, which also writes the matching
-        event), and then throws the error record whose identifier decides the exit code. Nothing has
-        been changed on the server when this is called.
+        event), and then throws the error record whose identifier decides the exit code. For a
+        failed precondition or an invalid configuration nothing has been changed on the server; for
+        an unexpected error (StageError) the report states the point the run reached, and every
+        stage is safe to run again on the next night.
 
     .PARAMETER Category
         Error category of the thrown record.
@@ -25,7 +27,7 @@ Function Stop-MaintenanceRun {
         Discovered facts for the report header, or null.
 
     .PARAMETER ErrorId
-        PreconditionFailed or ConfigurationInvalid.
+        PreconditionFailed, ConfigurationInvalid, or StageError for an unexpected error.
 
     .PARAMETER Guidance
         What to do about it.

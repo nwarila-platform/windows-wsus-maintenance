@@ -4,40 +4,57 @@
 
 # Message(s)
 $Script:Message += @{
-  'Invoke-WsusMaintenance.ApiGuidance'         = 'Check that the WSUS service and its IIS site are running and that the run identity is a WSUS administrator; set discovery.wsusHostName, discovery.wsusPort or discovery.wsusUseTls when WSUS listens elsewhere.'
-  'Invoke-WsusMaintenance.Connected'           = 'WSUS administration interface at {0}; SUSDB at {1}'
-  'Invoke-WsusMaintenance.ConnectedApi'        = 'WSUS administration interface at {0}; SUSDB not connected'
-  'Invoke-WsusMaintenance.DatabaseGuidance'    = 'Check that the SQL Server service is running and that the run identity has a login in SUSDB; set discovery.sqlInstance or discovery.databaseName when they are not discovered correctly.'
-  'Invoke-WsusMaintenance.Effective'           = 'Effective configuration: {0}'
-  'Invoke-WsusMaintenance.Elevation'           = 'The run must be elevated or run as LocalSystem; nothing was changed. {0}'
-  'Invoke-WsusMaintenance.ElevationGuidance'   = 'Run the scheduled task as SYSTEM with the highest privileges, or start the script from an elevated session.'
-  'Invoke-WsusMaintenance.Environment'         = 'Environment: {0}; database {1}.'
-  'Invoke-WsusMaintenance.EnvironmentFailed'   = 'This server is not a combination this release supports: {0}'
-  'Invoke-WsusMaintenance.EnvironmentGuidance' = 'Run the script on Windows Server 2019, 2022 or 2025 with the WSUS role installed and SUSDB on SQL Server on the same server.'
-  'Invoke-WsusMaintenance.FullRun'             = 'every enabled stage'
-  'Invoke-WsusMaintenance.Invalid'             = "Configuration '{0}' is invalid ({1} problem(s)):{2}{3}"
-  'Invoke-WsusMaintenance.InvalidGuidance'     = 'Correct each problem listed under Notices in the configuration document, then check it with -ValidateOnly before the next run.'
-  'Invoke-WsusMaintenance.LockGuidance'        = 'Make sure the run identity may create the system-wide lock, then run again.'
-  'Invoke-WsusMaintenance.LockHeld'            = 'Another run holds the lock; this run stops without changing anything.'
-  'Invoke-WsusMaintenance.LogGuidance'         = 'Point log.folder at a folder the run identity can create and write, then run again.'
-  'Invoke-WsusMaintenance.Overrides'           = 'Overrides: {0}.'
-  'Invoke-WsusMaintenance.PermissionLog'       = 'Database permissions: {0}.'
-  'Invoke-WsusMaintenance.PermissionUnchecked' = 'Database permissions could not be checked ({0}); each stage reports its own failure.'
-  'Invoke-WsusMaintenance.PointApi'            = 'connection to the WSUS administration interface'
-  'Invoke-WsusMaintenance.PointDatabase'       = 'connection to SUSDB'
-  'Invoke-WsusMaintenance.PointElevation'      = 'elevation check'
-  'Invoke-WsusMaintenance.PointEnvironment'    = 'environment discovery'
-  'Invoke-WsusMaintenance.PointLock'           = 'taking of the run lock'
-  'Invoke-WsusMaintenance.PointLog'            = 'opening of the run log'
-  'Invoke-WsusMaintenance.PointSyncGuard'      = 'synchronization guard'
-  'Invoke-WsusMaintenance.PointValidation'     = 'configuration validation'
-  'Invoke-WsusMaintenance.RoleLog'             = 'Server role: {0}; upstream {1}; WSUS {2}.'
-  'Invoke-WsusMaintenance.RoleUnknown'         = 'The server role could not be determined ({0}); every action that declines updates or changes approvals or computer groups is skipped.'
-  'Invoke-WsusMaintenance.StageList'           = 'stage list {0}'
-  'Invoke-WsusMaintenance.Started'             = 'Run started: {0}; dry run {1}; configuration {2}.'
-  'Invoke-WsusMaintenance.StartedEvent'        = 'Run {0} started: {1}.'
-  'Invoke-WsusMaintenance.SyncGuardFailed'     = 'The synchronization guard could not make sure that no synchronization runs: {0}.'
-  'Invoke-WsusMaintenance.SyncGuardGuidance'   = 'Let the running synchronization finish, or move the synchronization schedule away from the maintenance window, then run again.'
+  'Invoke-WsusMaintenance.ApiGuidance'          = 'Check that the WSUS service and its IIS site are running and that the run identity is a WSUS administrator; set discovery.wsusHostName, discovery.wsusPort or discovery.wsusUseTls when WSUS listens elsewhere.'
+  'Invoke-WsusMaintenance.Connected'            = 'WSUS administration interface at {0}; SUSDB at {1}'
+  'Invoke-WsusMaintenance.ConnectedApi'         = 'WSUS administration interface at {0}; SUSDB not connected'
+  'Invoke-WsusMaintenance.DatabaseGuidance'     = 'Check that the SQL Server service is running and that the run identity has a login in SUSDB; set discovery.sqlInstance or discovery.databaseName when they are not discovered correctly.'
+  'Invoke-WsusMaintenance.Dependencies'         = 'Dependencies: {0}.'
+  'Invoke-WsusMaintenance.DependencyGuidance'   = 'Repair the WSUS role (it installs the administration API) and the .NET Framework (it provides the SQL Server client) on this server, then run again; the script never downloads or installs them.'
+  'Invoke-WsusMaintenance.DependencyMissing'    = 'A component the whole run needs is missing on this server: {0}.'
+  'Invoke-WsusMaintenance.Effective'            = 'Effective configuration: {0}'
+  'Invoke-WsusMaintenance.Elevation'            = 'The run must be elevated or run as LocalSystem; nothing was changed. {0}'
+  'Invoke-WsusMaintenance.ElevationGuidance'    = 'Run the scheduled task as SYSTEM with the highest privileges, or start the script from an elevated session.'
+  'Invoke-WsusMaintenance.Environment'          = 'Environment: {0}; database {1}.'
+  'Invoke-WsusMaintenance.EnvironmentFailed'    = 'This server is not a combination this release supports: {0}'
+  'Invoke-WsusMaintenance.EnvironmentGuidance'  = 'Run the script on Windows Server 2019, 2022 or 2025 with the WSUS role installed and SUSDB on SQL Server on the same server.'
+  'Invoke-WsusMaintenance.FoldersGuidance'      = 'Remove write access for every other principal from the folder, or point the setting at a folder that does not exist yet so that the run creates it protected; set run.permissiveFolderOverride only when that access is intended.'
+  'Invoke-WsusMaintenance.FoldersRefused'       = 'A data folder can be changed by principals other than SYSTEM, Administrators and the run identity, so the run does not use it: {0}.'
+  'Invoke-WsusMaintenance.FullRun'              = 'every enabled stage'
+  'Invoke-WsusMaintenance.InstallationGuidance' = 'Install the script in a folder that only SYSTEM and Administrators can change, as the deployment does, and start it from there.'
+  'Invoke-WsusMaintenance.InstallationUnknown'  = "The protection of the script at '{0}' could not be checked: {1}"
+  'Invoke-WsusMaintenance.InstallationUnsafe'   = "The script runs from '{0}', which {1} can change; the run does not execute code that other principals can modify."
+  'Invoke-WsusMaintenance.Invalid'              = "Configuration '{0}' is invalid ({1} problem(s)):{2}{3}"
+  'Invoke-WsusMaintenance.InvalidGuidance'      = 'Correct each problem listed under Notices in the configuration document, then check it with -ValidateOnly before the next run.'
+  'Invoke-WsusMaintenance.LockGuidance'         = 'Make sure the run identity may create the system-wide lock, then run again.'
+  'Invoke-WsusMaintenance.LockHeld'             = 'Another run holds the lock; this run stops without changing anything.'
+  'Invoke-WsusMaintenance.LogGuidance'          = 'Point log.folder at a folder the run identity can create and write, then run again.'
+  'Invoke-WsusMaintenance.Overrides'            = 'Overrides: {0}.'
+  'Invoke-WsusMaintenance.PermissionLog'        = 'Database permissions: {0}.'
+  'Invoke-WsusMaintenance.PermissionUnchecked'  = 'Database permissions could not be checked ({0}); each stage reports its own failure.'
+  'Invoke-WsusMaintenance.PointApi'             = 'connection to the WSUS administration interface'
+  'Invoke-WsusMaintenance.PointDatabase'        = 'connection to SUSDB'
+  'Invoke-WsusMaintenance.PointDependencies'    = 'dependency check'
+  'Invoke-WsusMaintenance.PointElevation'       = 'elevation check'
+  'Invoke-WsusMaintenance.PointEnvironment'     = 'environment discovery'
+  'Invoke-WsusMaintenance.PointFolders'         = 'data folder protection check'
+  'Invoke-WsusMaintenance.PointInstallation'    = 'installation protection check'
+  'Invoke-WsusMaintenance.PointLock'            = 'taking of the run lock'
+  'Invoke-WsusMaintenance.PointLog'             = 'opening of the run log'
+  'Invoke-WsusMaintenance.PointPermission'      = 'database permission check'
+  'Invoke-WsusMaintenance.PointPublish'         = 'saving of the report and summary'
+  'Invoke-WsusMaintenance.PointRole'            = 'server role detection'
+  'Invoke-WsusMaintenance.PointStages'          = 'stage run'
+  'Invoke-WsusMaintenance.PointSyncGuard'       = 'synchronization guard'
+  'Invoke-WsusMaintenance.PointValidation'      = 'configuration validation'
+  'Invoke-WsusMaintenance.RoleLog'              = 'Server role: {0}; upstream {1}; WSUS {2}.'
+  'Invoke-WsusMaintenance.RoleUnknown'          = 'The server role could not be determined ({0}); every action that declines updates or changes approvals or computer groups is skipped.'
+  'Invoke-WsusMaintenance.StageList'            = 'stage list {0}'
+  'Invoke-WsusMaintenance.Started'              = 'Run started: {0}; dry run {1}; configuration {2}.'
+  'Invoke-WsusMaintenance.StartedEvent'         = 'Run {0} started: {1}.'
+  'Invoke-WsusMaintenance.SyncGuardFailed'      = 'The synchronization guard could not make sure that no synchronization runs: {0}.'
+  'Invoke-WsusMaintenance.SyncGuardGuidance'    = 'Let the running synchronization finish, or move the synchronization schedule away from the maintenance window, then run again.'
+  'Invoke-WsusMaintenance.Unexpected'           = 'An unexpected error stopped the run: {0}'
+  'Invoke-WsusMaintenance.UnexpectedGuidance'   = 'Read the run log for the error and where it occurred, and correct the cause; every stage is safe to run again, so the next run finishes the work.'
 }
 
 Function Invoke-WsusMaintenance {
@@ -56,18 +73,24 @@ Function Invoke-WsusMaintenance {
         Any other run first opens its run log, under a new run identifier, and chooses
         its report and summary folders; even an invalid configuration names them where it
         validly can, falling back to the built-in defaults. A log that cannot be written,
-        an invalid configuration, a run that is not elevated and a lock that cannot be
-        created each stop the run with a failure report, a summary and an event, and the
-        matching exit code (PreconditionFailed or ConfigurationInvalid). When another run
+        an invalid configuration, a run that is not elevated, a data folder or a script
+        location that principals other than SYSTEM, Administrators and the run identity can
+        change, and a lock that cannot be created each stop the run with a failure report, a
+        summary and an event, and the matching exit code (PreconditionFailed or
+        ConfigurationInvalid). When another run
         holds the lock, the run logs that and stops with LockHeld. Under the lock it discovers
-        the environment (an unsupported combination stops the run), connects to the WSUS
+        the environment (an unsupported combination stops the run), checks that the components
+        it uses are present (a missing one the whole run needs stops it; one that only some
+        stages need makes those stages unavailable), connects to the WSUS
         administration interface and to SUSDB, detects the server tier, checks the database
         permissions of each stage and runs the synchronization guard; a failed connection or
         a synchronization that will not stop also stops the run with a failure report and
         PreconditionFailed. It then writes the run-started event, plans and runs the stages,
         restarts the synchronization it stopped, closes the database connection and releases
         the lock on every path, including an unexpected error, and saves the report, the
-        summary and the completion event.
+        summary and the completion event. An unexpected error once the run log is open still
+        saves a failure report and summary that name the point the run reached, writes the
+        run-failed event and stops the run with StageError.
 
     .PARAMETER ConfigPath
         Configuration document to read; defaults to the fixed path under
@@ -84,16 +107,19 @@ Function Invoke-WsusMaintenance {
         Report folder for this run.
 
     .PARAMETER ReportFormat
-        Report formats for this run.
+        Report formats for this run: Text, Html, or both, as separate values or one
+        comma-separated value.
 
     .PARAMETER Stage
         Run only these stages, in their fixed order. Without it every enabled stage runs.
+        Names may be separate values or one comma-separated value.
 
     .PARAMETER ValidateOnly
         Validate the configuration and options, then stop.
 
     .PARAMETER Verbosity
-        Log verbosity for this run.
+        Log verbosity for this run: Error, Warning, Information, Verbose or Debug. Like
+        every other option, an unknown value is a configuration error.
 
     .EXAMPLE
         Invoke-WsusMaintenance -ConfigPath 'D:\Maintenance\maintenance.json' -ValidateOnly
@@ -160,7 +186,7 @@ Function Invoke-WsusMaintenance {
       ValueFromPipeline = $False,
       ValueFromPipelineByPropertyName = $False
     )]
-    [ValidateSet('Text', 'Html')]
+    [ValidateNotNullOrEmpty()]
     [System.String[]]
     $ReportFormat,
 
@@ -192,7 +218,7 @@ Function Invoke-WsusMaintenance {
       ValueFromPipeline = $False,
       ValueFromPipelineByPropertyName = $False
     )]
-    [ValidateSet('Error', 'Warning', 'Information', 'Verbose', 'Debug')]
+    [ValidateNotNullOrEmpty()]
     [System.String]
     $Verbosity
   )
@@ -200,7 +226,9 @@ Function Invoke-WsusMaintenance {
   Write-Debug -Message:'[Invoke-WsusMaintenance] Entering'
 
   # Initialize Variable(s)
+  [System.String[]]$Private:Allowed = @()
   [PSCustomObject]$Private:Connection = $Null
+  [PSCustomObject]$Private:Dependency = $Null
   [System.Collections.Specialized.OrderedDictionary]$Private:Discovery = $Null
   [PSCustomObject]$Private:Document = $Null
   [PSCustomObject]$Private:Effective = $Null
@@ -210,11 +238,14 @@ Function Invoke-WsusMaintenance {
   [System.Collections.Generic.List[System.String]]$Private:Errors = $Null
   [PSCustomObject]$Private:Execution = $Null
   [PSCustomObject]$Private:Guard = $Null
+  [PSCustomObject]$Private:Installation = $Null
+  [System.String]$Private:InstallationDetail = [System.String]::Empty
   [System.Object]$Private:Lock = $Null
   [System.Collections.Generic.List[PSCustomObject]]$Private:Notices = $Null
   [PSCustomObject]$Private:Output = $Null
   [System.Collections.Hashtable]$Private:OverrideParameters = $Null
   [PSCustomObject]$Private:Permission = $Null
+  [System.String]$Private:Point = [System.String]::Empty
   [PSCustomObject]$Private:Published = $Null
   [PSCustomObject]$Private:Resolution = $Null
   [PSCustomObject]$Private:Restore = $Null
@@ -227,6 +258,7 @@ Function Invoke-WsusMaintenance {
   [System.DateTime]$Private:RunStart = [System.DateTime]::MinValue
   [PSCustomObject]$Private:Server = $Null
   [PSCustomObject]$Private:Setting = $Null
+  [System.String]$Private:ShortErrorId = [System.String]::Empty
   [System.String]$Private:Status = [System.String]::Empty
   [PSCustomObject]$Private:Validation = $Null
   [PSCustomObject]$Private:ValidationSummary = $Null
@@ -235,6 +267,30 @@ Function Invoke-WsusMaintenance {
 
   $Errors = [System.Collections.Generic.List[System.String]]::new()
   $Notices = [System.Collections.Generic.List[PSCustomObject]]::new()
+
+  # powershell.exe -File passes every argument as one literal string, so a scheduled task gives
+  #   several stages or formats as one comma-separated value:
+  #   https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_powershell_exe
+  ForEach ($Name In @('ReportFormat', 'Stage')) {
+    If ($PSBoundParameters.ContainsKey($Name) -eq $True) {
+      $PSBoundParameters[$Name] = ConvertTo-MaintenanceList -Value:([System.String[]]$PSBoundParameters[$Name])
+    }
+  }
+
+  # Option values are matched without regard to case, as PowerShell matches parameter values.
+  If ($PSBoundParameters.ContainsKey('ReportFormat') -eq $True) {
+    $Allowed = [System.String[]]@(Get-MaintenanceConfigurationRule | Where-Object -FilterScript { $PSItem.Path -ceq 'report.formats' } | ForEach-Object -Process { $PSItem.AllowedValues })
+    $PSBoundParameters['ReportFormat'] = [System.String[]]@(
+      ForEach ($Format In $PSBoundParameters['ReportFormat']) {
+        ConvertTo-MaintenanceCanonicalValue -Allowed:$Allowed -Value:$Format
+      }
+    )
+  }
+
+  If ($PSBoundParameters.ContainsKey('Verbosity') -eq $True) {
+    $Allowed = [System.String[]]@(Get-MaintenanceConfigurationRule | Where-Object -FilterScript { $PSItem.Path -ceq 'log.verbosity' } | ForEach-Object -Process { $PSItem.AllowedValues })
+    $PSBoundParameters['Verbosity'] = ConvertTo-MaintenanceCanonicalValue -Allowed:$Allowed -Value:$Verbosity
+  }
 
   If ($PSBoundParameters.ContainsKey('ConfigPath') -eq $True) {
     $ResolvedPath = $ConfigPath
@@ -326,257 +382,361 @@ Function Invoke-WsusMaintenance {
     }
 
     $Discovery = [System.Collections.Specialized.OrderedDictionary]::new()
-    $Discovery['Identity'] = Get-MaintenanceIdentity
+    $Point = $Script:Message['Invoke-WsusMaintenance.PointLog']
+    Try {
+      $Discovery['Identity'] = Get-MaintenanceIdentity
 
-    $RunDescription = $Script:Message['Invoke-WsusMaintenance.FullRun']
-    If (@($Resolution.Stages).Count -gt 0) {
-      $RunDescription = $Script:Message['Invoke-WsusMaintenance.StageList'] -f (@($Resolution.Stages) -join ', ')
-    }
-
-    Write-MaintenanceLog -Level:'Information' -Log:$Output.Log -Message:($Script:Message['Invoke-WsusMaintenance.Started'] -f $RunDescription, ($DryRun.IsPresent -or (($Null -ne $Resolution.Configuration) -and ($Resolution.Configuration.run.dryRun -eq $True))), $ResolvedPath)
-    If (@($Resolution.Overrides).Count -gt 0) {
-      Write-MaintenanceLog -Level:'Information' -Log:$Output.Log -Message:($Script:Message['Invoke-WsusMaintenance.Overrides'] -f (@($Resolution.Overrides) -join '; '))
-    }
-
-    If ([System.String]::IsNullOrEmpty($Output.Log.Error) -eq $False) {
-      Stop-MaintenanceRun `
-        -Category:([System.Management.Automation.ErrorCategory]::WriteError) `
-        -Discovery:([PSCustomObject]$Discovery) `
-        -ErrorId:([MaintenanceExitCode]::PreconditionFailed) `
-        -Guidance:$Script:Message['Invoke-WsusMaintenance.LogGuidance'] `
-        -Message:$Output.Log.Error `
-        -Notice:$Notices.ToArray() `
-        -Output:$Output `
-        -Point:$Script:Message['Invoke-WsusMaintenance.PointLog'] `
-        -Run:(New-MaintenanceRunRecord -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
-        -TargetObject:$ValidationSummary `
-        -Validation:$ValidationSummary
-    }
-
-    If ($Errors.Count -gt 0) {
-      ForEach ($ConfigurationError In $Errors) {
-        $Notices.Add((New-MaintenanceNotice -Message:$ConfigurationError -Severity:'Error'))
+      $RunDescription = $Script:Message['Invoke-WsusMaintenance.FullRun']
+      If (@($Resolution.Stages).Count -gt 0) {
+        $RunDescription = $Script:Message['Invoke-WsusMaintenance.StageList'] -f (@($Resolution.Stages) -join ', ')
       }
 
-      Stop-MaintenanceRun `
-        -Category:([System.Management.Automation.ErrorCategory]::InvalidData) `
-        -Discovery:([PSCustomObject]$Discovery) `
-        -ErrorId:([MaintenanceExitCode]::ConfigurationInvalid) `
-        -Guidance:$Script:Message['Invoke-WsusMaintenance.InvalidGuidance'] `
-        -Message:($Script:Message['Invoke-WsusMaintenance.Invalid'] -f $ResolvedPath, $Errors.Count, [System.Environment]::NewLine, ($Errors -join [System.Environment]::NewLine)) `
-        -Notice:$Notices.ToArray() `
-        -Output:$Output `
-        -Point:$Script:Message['Invoke-WsusMaintenance.PointValidation'] `
-        -Run:(New-MaintenanceRunRecord -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
-        -TargetObject:$ValidationSummary `
-        -Validation:$ValidationSummary
-    }
-
-    Write-MaintenanceLog -Level:'Information' -Log:$Output.Log -Message:($Script:Message['Invoke-WsusMaintenance.Effective'] -f (ConvertTo-Json -InputObject:$Resolution.Configuration -Depth:32 -Compress))
-
-    Try {
-      $Elevated = Test-MaintenanceElevation
-    } Catch {
-      $Elevated = $False
-      $ElevationDetail = $PSItem.Exception.Message
-    }
-
-    If ($Elevated -eq $False) {
-      Stop-MaintenanceRun `
-        -Category:([System.Management.Automation.ErrorCategory]::PermissionDenied) `
-        -Discovery:([PSCustomObject]$Discovery) `
-        -ErrorId:([MaintenanceExitCode]::PreconditionFailed) `
-        -Guidance:$Script:Message['Invoke-WsusMaintenance.ElevationGuidance'] `
-        -Message:($Script:Message['Invoke-WsusMaintenance.Elevation'] -f $ElevationDetail).Trim() `
-        -Notice:$Notices.ToArray() `
-        -Output:$Output `
-        -Point:$Script:Message['Invoke-WsusMaintenance.PointElevation'] `
-        -Run:(New-MaintenanceRunRecord -DryRun:$Resolution.Configuration.run.dryRun -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
-        -TargetObject:$ValidationSummary `
-        -Validation:$ValidationSummary
-    }
-
-    Try {
-      $Lock = Enter-MaintenanceLock -Name:'Global\Invoke-WsusMaintenance'
-    } Catch {
-      If (([System.String]$PSItem.FullyQualifiedErrorId -like 'LockHeld,*') -eq $True) {
-        Write-MaintenanceLog -Level:'Warning' -Log:$Output.Log -Message:$Script:Message['Invoke-WsusMaintenance.LockHeld']
-        Throw
+      Write-MaintenanceLog -Level:'Information' -Log:$Output.Log -Message:($Script:Message['Invoke-WsusMaintenance.Started'] -f $RunDescription, ($DryRun.IsPresent -or (($Null -ne $Resolution.Configuration) -and ($Resolution.Configuration.run.dryRun -eq $True))), $ResolvedPath)
+      If (@($Resolution.Overrides).Count -gt 0) {
+        Write-MaintenanceLog -Level:'Information' -Log:$Output.Log -Message:($Script:Message['Invoke-WsusMaintenance.Overrides'] -f (@($Resolution.Overrides) -join '; '))
       }
 
-      Stop-MaintenanceRun `
-        -Category:([System.Management.Automation.ErrorCategory]::ResourceUnavailable) `
-        -Discovery:([PSCustomObject]$Discovery) `
-        -ErrorId:([MaintenanceExitCode]::PreconditionFailed) `
-        -Guidance:$Script:Message['Invoke-WsusMaintenance.LockGuidance'] `
-        -Message:$PSItem.Exception.Message `
-        -Notice:$Notices.ToArray() `
-        -Output:$Output `
-        -Point:$Script:Message['Invoke-WsusMaintenance.PointLock'] `
-        -Run:(New-MaintenanceRunRecord -DryRun:$Resolution.Configuration.run.dryRun -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
-        -TargetObject:$ValidationSummary `
-        -Validation:$ValidationSummary
-    }
-
-    $Restored = $False
-    Try {
-      $Environment = Get-WsusEnvironment -Configuration:$Resolution.Configuration -OperatingSystem:(Get-MaintenanceOperatingSystem) -Setup:(Get-WsusSetupValue)
-      $Discovery['Database'] = $Environment.Description
-      Write-MaintenanceLog -Level:'Information' -Log:$Output.Log -Message:($Script:Message['Invoke-WsusMaintenance.Environment'] -f $Environment.OperatingSystem, $Environment.Description)
-      If (@($Environment.Problems).Count -gt 0) {
+      If ([System.String]::IsNullOrEmpty($Output.Log.Error) -eq $False) {
         Stop-MaintenanceRun `
-          -Category:([System.Management.Automation.ErrorCategory]::NotInstalled) `
+          -Category:([System.Management.Automation.ErrorCategory]::WriteError) `
           -Discovery:([PSCustomObject]$Discovery) `
           -ErrorId:([MaintenanceExitCode]::PreconditionFailed) `
-          -Guidance:$Script:Message['Invoke-WsusMaintenance.EnvironmentGuidance'] `
-          -Message:($Script:Message['Invoke-WsusMaintenance.EnvironmentFailed'] -f (@($Environment.Problems) -join ' ')) `
+          -Guidance:$Script:Message['Invoke-WsusMaintenance.LogGuidance'] `
+          -Message:$Output.Log.Error `
           -Notice:$Notices.ToArray() `
           -Output:$Output `
-          -Point:$Script:Message['Invoke-WsusMaintenance.PointEnvironment'] `
+          -Point:$Script:Message['Invoke-WsusMaintenance.PointLog'] `
+          -Run:(New-MaintenanceRunRecord -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
+          -TargetObject:$ValidationSummary `
+          -Validation:$ValidationSummary
+      }
+
+      If ($Errors.Count -gt 0) {
+        ForEach ($ConfigurationError In $Errors) {
+          $Notices.Add((New-MaintenanceNotice -Message:$ConfigurationError -Severity:'Error'))
+        }
+
+        Stop-MaintenanceRun `
+          -Category:([System.Management.Automation.ErrorCategory]::InvalidData) `
+          -Discovery:([PSCustomObject]$Discovery) `
+          -ErrorId:([MaintenanceExitCode]::ConfigurationInvalid) `
+          -Guidance:$Script:Message['Invoke-WsusMaintenance.InvalidGuidance'] `
+          -Message:($Script:Message['Invoke-WsusMaintenance.Invalid'] -f $ResolvedPath, $Errors.Count, [System.Environment]::NewLine, ($Errors -join [System.Environment]::NewLine)) `
+          -Notice:$Notices.ToArray() `
+          -Output:$Output `
+          -Point:$Script:Message['Invoke-WsusMaintenance.PointValidation'] `
+          -Run:(New-MaintenanceRunRecord -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
+          -TargetObject:$ValidationSummary `
+          -Validation:$ValidationSummary
+      }
+
+      $Point = $Script:Message['Invoke-WsusMaintenance.PointElevation']
+      Write-MaintenanceLog -Level:'Information' -Log:$Output.Log -Message:($Script:Message['Invoke-WsusMaintenance.Effective'] -f (ConvertTo-Json -InputObject:$Resolution.Configuration -Depth:32 -Compress))
+
+      Try {
+        $Elevated = Test-MaintenanceElevation
+      } Catch {
+        $Elevated = $False
+        $ElevationDetail = $PSItem.Exception.Message
+      }
+
+      If ($Elevated -eq $False) {
+        Stop-MaintenanceRun `
+          -Category:([System.Management.Automation.ErrorCategory]::PermissionDenied) `
+          -Discovery:([PSCustomObject]$Discovery) `
+          -ErrorId:([MaintenanceExitCode]::PreconditionFailed) `
+          -Guidance:$Script:Message['Invoke-WsusMaintenance.ElevationGuidance'] `
+          -Message:($Script:Message['Invoke-WsusMaintenance.Elevation'] -f $ElevationDetail).Trim() `
+          -Notice:$Notices.ToArray() `
+          -Output:$Output `
+          -Point:$Script:Message['Invoke-WsusMaintenance.PointElevation'] `
           -Run:(New-MaintenanceRunRecord -DryRun:$Resolution.Configuration.run.dryRun -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
           -TargetObject:$ValidationSummary `
           -Validation:$ValidationSummary
       }
 
-      $Connection = Connect-MaintenanceServer -Configuration:$Resolution.Configuration -Environment:$Environment
-      $Discovery['Endpoint'] = $Connection.Endpoint
-      If ($Null -ne $Connection.DatabaseConnectedAt) {
-        $Discovery['Connection'] = $Script:Message['Invoke-WsusMaintenance.Connected'] -f $Connection.ApiConnectedAt.ToString('HH:mm:ss', [System.Globalization.CultureInfo]::InvariantCulture), $Connection.DatabaseConnectedAt.ToString('HH:mm:ss', [System.Globalization.CultureInfo]::InvariantCulture)
-      } ElseIf ($Null -ne $Connection.ApiConnectedAt) {
-        $Discovery['Connection'] = $Script:Message['Invoke-WsusMaintenance.ConnectedApi'] -f $Connection.ApiConnectedAt.ToString('HH:mm:ss', [System.Globalization.CultureInfo]::InvariantCulture)
-      }
-
-      If ($Connection.Point -eq 'Api') {
+      # Folder protection (REQ-092): the run neither writes into a data folder nor runs code from a
+      #   folder that principals other than SYSTEM, Administrators and the run identity can change.
+      $Point = $Script:Message['Invoke-WsusMaintenance.PointFolders']
+      If (@($Output.Refused).Count -gt 0) {
         Stop-MaintenanceRun `
-          -Category:([System.Management.Automation.ErrorCategory]::ConnectionError) `
+          -Category:([System.Management.Automation.ErrorCategory]::PermissionDenied) `
           -Discovery:([PSCustomObject]$Discovery) `
           -ErrorId:([MaintenanceExitCode]::PreconditionFailed) `
-          -Guidance:$Script:Message['Invoke-WsusMaintenance.ApiGuidance'] `
-          -Message:$Connection.Error `
+          -Guidance:$Script:Message['Invoke-WsusMaintenance.FoldersGuidance'] `
+          -Message:($Script:Message['Invoke-WsusMaintenance.FoldersRefused'] -f (@($Output.Refused) -join '; ')) `
           -Notice:$Notices.ToArray() `
           -Output:$Output `
-          -Point:$Script:Message['Invoke-WsusMaintenance.PointApi'] `
-          -Run:(New-MaintenanceRunRecord -DryRun:$Resolution.Configuration.run.dryRun -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
-          -TargetObject:$ValidationSummary `
-          -Validation:$ValidationSummary
-      } ElseIf ($Connection.Point -eq 'Database') {
-        Stop-MaintenanceRun `
-          -Category:([System.Management.Automation.ErrorCategory]::ConnectionError) `
-          -Discovery:([PSCustomObject]$Discovery) `
-          -ErrorId:([MaintenanceExitCode]::PreconditionFailed) `
-          -Guidance:$Script:Message['Invoke-WsusMaintenance.DatabaseGuidance'] `
-          -Message:$Connection.Error `
-          -Notice:$Notices.ToArray() `
-          -Output:$Output `
-          -Point:$Script:Message['Invoke-WsusMaintenance.PointDatabase'] `
+          -Point:$Point `
           -Run:(New-MaintenanceRunRecord -DryRun:$Resolution.Configuration.run.dryRun -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
           -TargetObject:$ValidationSummary `
           -Validation:$ValidationSummary
       }
 
-      $Role = Get-WsusServerRole -UpdateServer:$Connection.UpdateServer
-      $Discovery['WsusVersion'] = $Role.Version
-      $Discovery['Role'] = $Role.Description
-      $Discovery['Upstream'] = $Role.Upstream
-      Write-MaintenanceLog -Level:'Information' -Log:$Output.Log -Message:($Script:Message['Invoke-WsusMaintenance.RoleLog'] -f $Role.Description, $Role.Upstream, $Role.Version)
-      If ([System.String]::IsNullOrEmpty($Role.Error) -eq $False) {
-        $Notices.Add((New-MaintenanceNotice -Message:($Script:Message['Invoke-WsusMaintenance.RoleUnknown'] -f $Role.Error) -Severity:'Warning'))
+      If ((Test-MaintenanceAclSupport) -eq $True) {
+        $Point = $Script:Message['Invoke-WsusMaintenance.PointInstallation']
+        $Installation = Test-MaintenanceInstallation
+        If ($Installation.Safe -eq $False) {
+          If ([System.String]::IsNullOrEmpty($Installation.Error) -eq $False) {
+            $InstallationDetail = $Script:Message['Invoke-WsusMaintenance.InstallationUnknown'] -f $Installation.Path, $Installation.Error
+          } Else {
+            $InstallationDetail = $Script:Message['Invoke-WsusMaintenance.InstallationUnsafe'] -f $Installation.Path, (@($Installation.Writers) -join ', ')
+          }
+
+          Stop-MaintenanceRun `
+            -Category:([System.Management.Automation.ErrorCategory]::SecurityError) `
+            -Discovery:([PSCustomObject]$Discovery) `
+            -ErrorId:([MaintenanceExitCode]::PreconditionFailed) `
+            -Guidance:$Script:Message['Invoke-WsusMaintenance.InstallationGuidance'] `
+            -Message:$InstallationDetail `
+            -Notice:$Notices.ToArray() `
+            -Output:$Output `
+            -Point:$Point `
+            -Run:(New-MaintenanceRunRecord -DryRun:$Resolution.Configuration.run.dryRun -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
+            -TargetObject:$ValidationSummary `
+            -Validation:$ValidationSummary
+        }
       }
 
-      $Permission = Test-SusdbPermission -Connection:$Connection.Database -Log:$Output.Log -TimeoutSeconds:([System.Int32]$Resolution.Configuration.run.databaseCommandTimeoutSeconds)
-      $Discovery['Permissions'] = $Permission.Summary
-      Write-MaintenanceLog -Level:'Information' -Log:$Output.Log -Message:($Script:Message['Invoke-WsusMaintenance.PermissionLog'] -f $Permission.Summary)
-      If ($Permission.Checked -eq $False) {
-        $Notices.Add((New-MaintenanceNotice -Message:($Script:Message['Invoke-WsusMaintenance.PermissionUnchecked'] -f $Permission.Error) -Severity:'Warning'))
+      $Point = $Script:Message['Invoke-WsusMaintenance.PointLock']
+      Try {
+        $Lock = Enter-MaintenanceLock -Name:'Global\Invoke-WsusMaintenance'
+      } Catch {
+        If (([System.String]$PSItem.FullyQualifiedErrorId -like 'LockHeld,*') -eq $True) {
+          Write-MaintenanceLog -Level:'Warning' -Log:$Output.Log -Message:$Script:Message['Invoke-WsusMaintenance.LockHeld']
+          Throw
+        }
+
+        Stop-MaintenanceRun `
+          -Category:([System.Management.Automation.ErrorCategory]::ResourceUnavailable) `
+          -Discovery:([PSCustomObject]$Discovery) `
+          -ErrorId:([MaintenanceExitCode]::PreconditionFailed) `
+          -Guidance:$Script:Message['Invoke-WsusMaintenance.LockGuidance'] `
+          -Message:$PSItem.Exception.Message `
+          -Notice:$Notices.ToArray() `
+          -Output:$Output `
+          -Point:$Script:Message['Invoke-WsusMaintenance.PointLock'] `
+          -Run:(New-MaintenanceRunRecord -DryRun:$Resolution.Configuration.run.dryRun -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
+          -TargetObject:$ValidationSummary `
+          -Validation:$ValidationSummary
       }
 
-      $Guard = Invoke-SynchronizationGuard -Configuration:$Resolution.Configuration -Log:$Output.Log -UpdateServer:$Connection.UpdateServer
-      $Discovery['Synchronization'] = $Guard.Summary
-      If ($Guard.Succeeded -eq $False) {
+      $Restored = $False
+      Try {
+        $Point = $Script:Message['Invoke-WsusMaintenance.PointEnvironment']
+        $Environment = Get-WsusEnvironment -Configuration:$Resolution.Configuration -OperatingSystem:(Get-MaintenanceOperatingSystem) -Setup:(Get-WsusSetupValue)
+        $Discovery['Database'] = $Environment.Description
+        Write-MaintenanceLog -Level:'Information' -Log:$Output.Log -Message:($Script:Message['Invoke-WsusMaintenance.Environment'] -f $Environment.OperatingSystem, $Environment.Description)
+        If (@($Environment.Problems).Count -gt 0) {
+          Stop-MaintenanceRun `
+            -Category:([System.Management.Automation.ErrorCategory]::NotInstalled) `
+            -Discovery:([PSCustomObject]$Discovery) `
+            -ErrorId:([MaintenanceExitCode]::PreconditionFailed) `
+            -Guidance:$Script:Message['Invoke-WsusMaintenance.EnvironmentGuidance'] `
+            -Message:($Script:Message['Invoke-WsusMaintenance.EnvironmentFailed'] -f (@($Environment.Problems) -join ' ')) `
+            -Notice:$Notices.ToArray() `
+            -Output:$Output `
+            -Point:$Script:Message['Invoke-WsusMaintenance.PointEnvironment'] `
+            -Run:(New-MaintenanceRunRecord -DryRun:$Resolution.Configuration.run.dryRun -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
+            -TargetObject:$ValidationSummary `
+            -Validation:$ValidationSummary
+        }
+
+        # Every component the run uses must already be on the server; nothing is downloaded or
+        #   installed (REQ-093).
+        $Point = $Script:Message['Invoke-WsusMaintenance.PointDependencies']
+        $Dependency = Test-MaintenanceDependency -Configuration:$Resolution.Configuration
+        Write-MaintenanceLog -Level:'Information' -Log:$Output.Log -Message:($Script:Message['Invoke-WsusMaintenance.Dependencies'] -f $Dependency.Summary)
+        If (@($Dependency.Blocking).Count -gt 0) {
+          Stop-MaintenanceRun `
+            -Category:([System.Management.Automation.ErrorCategory]::NotInstalled) `
+            -Discovery:([PSCustomObject]$Discovery) `
+            -ErrorId:([MaintenanceExitCode]::PreconditionFailed) `
+            -Guidance:$Script:Message['Invoke-WsusMaintenance.DependencyGuidance'] `
+            -Message:($Script:Message['Invoke-WsusMaintenance.DependencyMissing'] -f (@($Dependency.Blocking) -join '; ')) `
+            -Notice:$Notices.ToArray() `
+            -Output:$Output `
+            -Point:$Point `
+            -Run:(New-MaintenanceRunRecord -DryRun:$Resolution.Configuration.run.dryRun -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
+            -TargetObject:$ValidationSummary `
+            -Validation:$ValidationSummary
+        }
+
+        $Point = $Script:Message['Invoke-WsusMaintenance.PointApi']
+        $Connection = Connect-MaintenanceServer -Configuration:$Resolution.Configuration -Environment:$Environment
+        $Discovery['Endpoint'] = $Connection.Endpoint
+        If ($Null -ne $Connection.DatabaseConnectedAt) {
+          $Discovery['Connection'] = $Script:Message['Invoke-WsusMaintenance.Connected'] -f $Connection.ApiConnectedAt.ToString('HH:mm:ss', [System.Globalization.CultureInfo]::InvariantCulture), $Connection.DatabaseConnectedAt.ToString('HH:mm:ss', [System.Globalization.CultureInfo]::InvariantCulture)
+        } ElseIf ($Null -ne $Connection.ApiConnectedAt) {
+          $Discovery['Connection'] = $Script:Message['Invoke-WsusMaintenance.ConnectedApi'] -f $Connection.ApiConnectedAt.ToString('HH:mm:ss', [System.Globalization.CultureInfo]::InvariantCulture)
+        }
+
+        If ($Connection.Point -eq 'Api') {
+          Stop-MaintenanceRun `
+            -Category:([System.Management.Automation.ErrorCategory]::ConnectionError) `
+            -Discovery:([PSCustomObject]$Discovery) `
+            -ErrorId:([MaintenanceExitCode]::PreconditionFailed) `
+            -Guidance:$Script:Message['Invoke-WsusMaintenance.ApiGuidance'] `
+            -Message:$Connection.Error `
+            -Notice:$Notices.ToArray() `
+            -Output:$Output `
+            -Point:$Script:Message['Invoke-WsusMaintenance.PointApi'] `
+            -Run:(New-MaintenanceRunRecord -DryRun:$Resolution.Configuration.run.dryRun -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
+            -TargetObject:$ValidationSummary `
+            -Validation:$ValidationSummary
+        } ElseIf ($Connection.Point -eq 'Database') {
+          Stop-MaintenanceRun `
+            -Category:([System.Management.Automation.ErrorCategory]::ConnectionError) `
+            -Discovery:([PSCustomObject]$Discovery) `
+            -ErrorId:([MaintenanceExitCode]::PreconditionFailed) `
+            -Guidance:$Script:Message['Invoke-WsusMaintenance.DatabaseGuidance'] `
+            -Message:$Connection.Error `
+            -Notice:$Notices.ToArray() `
+            -Output:$Output `
+            -Point:$Script:Message['Invoke-WsusMaintenance.PointDatabase'] `
+            -Run:(New-MaintenanceRunRecord -DryRun:$Resolution.Configuration.run.dryRun -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
+            -TargetObject:$ValidationSummary `
+            -Validation:$ValidationSummary
+        }
+
+        $Point = $Script:Message['Invoke-WsusMaintenance.PointRole']
+        $Role = Get-WsusServerRole -UpdateServer:$Connection.UpdateServer
+        $Discovery['WsusVersion'] = $Role.Version
+        $Discovery['Role'] = $Role.Description
+        $Discovery['Upstream'] = $Role.Upstream
+        Write-MaintenanceLog -Level:'Information' -Log:$Output.Log -Message:($Script:Message['Invoke-WsusMaintenance.RoleLog'] -f $Role.Description, $Role.Upstream, $Role.Version)
+        If ([System.String]::IsNullOrEmpty($Role.Error) -eq $False) {
+          $Notices.Add((New-MaintenanceNotice -Message:($Script:Message['Invoke-WsusMaintenance.RoleUnknown'] -f $Role.Error) -Severity:'Warning'))
+        }
+
+        $Point = $Script:Message['Invoke-WsusMaintenance.PointPermission']
+        $Permission = Test-SusdbPermission -Connection:$Connection.Database -Log:$Output.Log -TimeoutSeconds:([System.Int32]$Resolution.Configuration.run.databaseCommandTimeoutSeconds)
+        $Discovery['Permissions'] = $Permission.Summary
+        Write-MaintenanceLog -Level:'Information' -Log:$Output.Log -Message:($Script:Message['Invoke-WsusMaintenance.PermissionLog'] -f $Permission.Summary)
+        If ($Permission.Checked -eq $False) {
+          $Notices.Add((New-MaintenanceNotice -Message:($Script:Message['Invoke-WsusMaintenance.PermissionUnchecked'] -f $Permission.Error) -Severity:'Warning'))
+        }
+
+        $Point = $Script:Message['Invoke-WsusMaintenance.PointSyncGuard']
+        $Guard = Invoke-SynchronizationGuard -Configuration:$Resolution.Configuration -Log:$Output.Log -UpdateServer:$Connection.UpdateServer
+        $Discovery['Synchronization'] = $Guard.Summary
+        If ($Guard.Succeeded -eq $False) {
+          $Restore = Restore-Synchronization -Guard:$Guard -Log:$Output.Log -UpdateServer:$Connection.UpdateServer
+          $Restored = $True
+          $Discovery['Synchronization'] = $Restore.Summary
+          ForEach ($RestoreNotice In $Restore.Notices) {
+            $Notices.Add($RestoreNotice)
+          }
+
+          Stop-MaintenanceRun `
+            -Category:([System.Management.Automation.ErrorCategory]::ResourceBusy) `
+            -Discovery:([PSCustomObject]$Discovery) `
+            -ErrorId:([MaintenanceExitCode]::PreconditionFailed) `
+            -Guidance:$Script:Message['Invoke-WsusMaintenance.SyncGuardGuidance'] `
+            -Message:($Script:Message['Invoke-WsusMaintenance.SyncGuardFailed'] -f $Guard.Summary) `
+            -Notice:$Notices.ToArray() `
+            -Output:$Output `
+            -Point:$Script:Message['Invoke-WsusMaintenance.PointSyncGuard'] `
+            -Run:(New-MaintenanceRunRecord -DryRun:$Resolution.Configuration.run.dryRun -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
+            -TargetObject:$ValidationSummary `
+            -Validation:$ValidationSummary
+        }
+
+        $Server = [PSCustomObject]@{
+          Tier                  = [System.String]$Role.Tier
+          Role                  = $Role
+          Environment           = $Environment
+          Permission            = $Permission
+          UpdateServer          = $Connection.UpdateServer
+          Database              = $Connection.Database
+          CommandTimeoutSeconds = [System.Int32]$Resolution.Configuration.run.databaseCommandTimeoutSeconds
+        }
+
+        $Point = $Script:Message['Invoke-WsusMaintenance.PointStages']
+        Write-MaintenanceEvent -Channel:$Output.Events -Kind:'runStarted' -Message:($Script:Message['Invoke-WsusMaintenance.StartedEvent'] -f $RunId, $RunDescription)
+        $Execution = Invoke-MaintenanceRun `
+          -Configuration:$Resolution.Configuration `
+          -Events:$Output.Events `
+          -Log:$Output.Log `
+          -RemoveCustomIndexes:$Resolution.RemoveCustomIndexes `
+          -RunStart:$RunStart `
+          -Server:$Server `
+          -Stage:$Resolution.Stages `
+          -Unavailable:$Dependency.Unavailable
+
         $Restore = Restore-Synchronization -Guard:$Guard -Log:$Output.Log -UpdateServer:$Connection.UpdateServer
         $Restored = $True
         $Discovery['Synchronization'] = $Restore.Summary
         ForEach ($RestoreNotice In $Restore.Notices) {
           $Notices.Add($RestoreNotice)
         }
+      } Finally {
+        # An unexpected failure must still give back the synchronization the guard stopped; the
+        #   failure report then shows what the restart did.
+        If (($Null -ne $Guard) -and ($Restored -eq $False)) {
+          $Restore = Restore-Synchronization -Guard:$Guard -Log:$Output.Log -UpdateServer:$Connection.UpdateServer
+          $Restored = $True
+          $Discovery['Synchronization'] = $Restore.Summary
+          ForEach ($RestoreNotice In $Restore.Notices) {
+            $Notices.Add($RestoreNotice)
+          }
+        }
 
-        Stop-MaintenanceRun `
-          -Category:([System.Management.Automation.ErrorCategory]::ResourceBusy) `
-          -Discovery:([PSCustomObject]$Discovery) `
-          -ErrorId:([MaintenanceExitCode]::PreconditionFailed) `
-          -Guidance:$Script:Message['Invoke-WsusMaintenance.SyncGuardGuidance'] `
-          -Message:($Script:Message['Invoke-WsusMaintenance.SyncGuardFailed'] -f $Guard.Summary) `
-          -Notice:$Notices.ToArray() `
-          -Output:$Output `
-          -Point:$Script:Message['Invoke-WsusMaintenance.PointSyncGuard'] `
-          -Run:(New-MaintenanceRunRecord -DryRun:$Resolution.Configuration.run.dryRun -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
-          -TargetObject:$ValidationSummary `
-          -Validation:$ValidationSummary
+        Disconnect-MaintenanceServer -Connection:$Connection
+        Exit-MaintenanceLock -Lock:$Lock
       }
 
-      $Server = [PSCustomObject]@{
-        Tier                  = [System.String]$Role.Tier
-        Role                  = $Role
-        Environment           = $Environment
-        Permission            = $Permission
-        UpdateServer          = $Connection.UpdateServer
-        Database              = $Connection.Database
-        CommandTimeoutSeconds = [System.Int32]$Resolution.Configuration.run.databaseCommandTimeoutSeconds
+      $Point = $Script:Message['Invoke-WsusMaintenance.PointPublish']
+      ForEach ($RunNotice In $Execution.Notices) {
+        $Notices.Add($RunNotice)
       }
 
-      Write-MaintenanceEvent -Channel:$Output.Events -Kind:'runStarted' -Message:($Script:Message['Invoke-WsusMaintenance.StartedEvent'] -f $RunId, $RunDescription)
-      $Execution = Invoke-MaintenanceRun `
-        -Configuration:$Resolution.Configuration `
-        -Events:$Output.Events `
-        -Log:$Output.Log `
-        -RemoveCustomIndexes:$Resolution.RemoveCustomIndexes `
-        -RunStart:$RunStart `
-        -Server:$Server `
-        -Stage:$Resolution.Stages
-
-      $Restore = Restore-Synchronization -Guard:$Guard -Log:$Output.Log -UpdateServer:$Connection.UpdateServer
-      $Restored = $True
-      $Discovery['Synchronization'] = $Restore.Summary
-      ForEach ($RestoreNotice In $Restore.Notices) {
-        $Notices.Add($RestoreNotice)
-      }
-    } Finally {
-      # An unexpected failure must still give back the synchronization the guard stopped.
-      If (($Null -ne $Guard) -and ($Restored -eq $False)) {
-        $Null = Restore-Synchronization -Guard:$Guard -Log:$Output.Log -UpdateServer:$Connection.UpdateServer
+      $RunRecord = New-MaintenanceRunRecord -Deadline:$Execution.Deadline -DryRun:$Execution.DryRun -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages
+      $Status = Resolve-MaintenanceRunStatus -Notice:$Notices.ToArray() -Stage:$Execution.Outcomes
+      $Published = Publish-MaintenanceRunOutput `
+        -Discovery:([PSCustomObject]$Discovery) `
+        -ExitCode:([System.Int32](New-MaintenanceRunResult -Status:$Status -Validation:$ValidationSummary).ExitCode) `
+        -Notice:$Notices.ToArray() `
+        -Output:$Output `
+        -Run:$RunRecord `
+        -Stage:$Execution.Outcomes `
+        -Status:$Status `
+        -Validation:$ValidationSummary
+      $RunRecord.Artifacts = [PSCustomObject]@{
+        Log     = [System.String]$Output.Log.Path
+        Reports = [System.String[]]$Published.ReportPaths
+        Summary = [System.String]$Published.SummaryPath
       }
 
-      Disconnect-MaintenanceServer -Connection:$Connection
-      Exit-MaintenanceLock -Lock:$Lock
+      [PSCustomObject]$Result = New-MaintenanceRunResult `
+        -Notice:$Notices.ToArray() `
+        -Run:$RunRecord `
+        -Stage:$Execution.Outcomes `
+        -Status:$Status `
+        -Validation:$ValidationSummary
+    } Catch {
+      # A coded stop has already saved its failure report (LockHeld saves none by design) and
+      #   keeps its own exit code. Anything else is unexpected: the synchronization the guard
+      #   stopped has been restarted by now, and the run still saves a failure report, writes the
+      #   run-failed event and exits with StageError.
+      $ShortErrorId = ([System.String]$PSItem.FullyQualifiedErrorId -split ',', 2)[0]
+      If ([System.Enum]::IsDefined([MaintenanceExitCode], $ShortErrorId) -eq $True) {
+        Throw
+      }
+
+      Stop-MaintenanceRun `
+        -Category:$PSItem.CategoryInfo.Category `
+        -Discovery:([PSCustomObject]$Discovery) `
+        -ErrorId:([MaintenanceExitCode]::StageError) `
+        -Guidance:$Script:Message['Invoke-WsusMaintenance.UnexpectedGuidance'] `
+        -Message:($Script:Message['Invoke-WsusMaintenance.Unexpected'] -f $PSItem.Exception.Message) `
+        -Notice:$Notices.ToArray() `
+        -Output:$Output `
+        -Point:$Point `
+        -Run:(New-MaintenanceRunRecord -DryRun:(($Null -ne $Resolution.Configuration) -and ($Resolution.Configuration.run.dryRun -eq $True)) -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages) `
+        -TargetObject:$ValidationSummary `
+        -Validation:$ValidationSummary
     }
-
-    ForEach ($RunNotice In $Execution.Notices) {
-      $Notices.Add($RunNotice)
-    }
-
-    $RunRecord = New-MaintenanceRunRecord -Deadline:$Execution.Deadline -DryRun:$Execution.DryRun -RunId:$RunId -RunStart:$RunStart -Stage:$Resolution.Stages
-    $Status = Resolve-MaintenanceRunStatus -Notice:$Notices.ToArray() -Stage:$Execution.Outcomes
-    $Published = Publish-MaintenanceRunOutput `
-      -Discovery:([PSCustomObject]$Discovery) `
-      -ExitCode:([System.Int32](New-MaintenanceRunResult -Status:$Status -Validation:$ValidationSummary).ExitCode) `
-      -Notice:$Notices.ToArray() `
-      -Output:$Output `
-      -Run:$RunRecord `
-      -Stage:$Execution.Outcomes `
-      -Status:$Status `
-      -Validation:$ValidationSummary
-    $RunRecord.Artifacts = [PSCustomObject]@{
-      Log     = [System.String]$Output.Log.Path
-      Reports = [System.String[]]$Published.ReportPaths
-      Summary = [System.String]$Published.SummaryPath
-    }
-
-    [PSCustomObject]$Result = New-MaintenanceRunResult `
-      -Notice:$Notices.ToArray() `
-      -Run:$RunRecord `
-      -Stage:$Execution.Outcomes `
-      -Status:$Status `
-      -Validation:$ValidationSummary
   }
 
   $Result

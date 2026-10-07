@@ -11,6 +11,7 @@ $Script:Message += @{
   'Invoke-MaintenanceRun.GateReason'   = 'skipped: no recent backup'
   'Invoke-MaintenanceRun.Permission'   = 'Stage {0} is skipped because the run identity lacks {1} in SUSDB.'
   'Invoke-MaintenanceRun.Skipped'      = 'Stage skipped: {0}.'
+  'Invoke-MaintenanceRun.Unavailable'  = 'Stage {0} is unavailable because {1} is missing on this server; it runs again once that is in place.'
   'Invoke-MaintenanceRun.Unexpected'   = 'The run stopped early because of an unexpected error: {0}'
 }
 
@@ -26,8 +27,9 @@ Function Invoke-MaintenanceRun {
         starting is reported and simply runs again next time. Anything unexpected outside
         a stage stops the loop and is returned as an Error notice together with every
         outcome gathered so far; this function never throws for it. The server facts from
-        discovery gate the plan (replica, unknown tier, missing permissions); each stage skipped
-        for a missing permission raises a Warning notice before the first stage starts, and
+        discovery gate the plan (replica, unknown tier, missing permissions, missing components);
+        each stage skipped for a missing permission or as unavailable raises a Warning notice
+        before the first stage starts, and
         every handler receives the server facts in its context. Before the first stage that deletes
         or alters SUSDB content, the backup gate is evaluated once (Test-BackupGate): when it is
         Required and closed those stages are skipped with "skipped: no recent backup" and a High
@@ -57,6 +59,9 @@ Function Invoke-MaintenanceRun {
 
     .PARAMETER Stage
         Canonical stage names given with -Stage; empty means every enabled stage.
+
+    .PARAMETER Unavailable
+        Missing components by stage name (Test-MaintenanceDependency), or null when not checked.
 
     .EXAMPLE
         Invoke-MaintenanceRun -Configuration $Effective -RunStart (Get-MaintenanceTime)
@@ -147,7 +152,18 @@ Function Invoke-MaintenanceRun {
     )]
     [AllowEmptyCollection()]
     [System.String[]]
-    $Stage = @()
+    $Stage = @(),
+
+    [Parameter(
+      DontShow = $False,
+      Mandatory = $False,
+      ParameterSetName = 'default',
+      ValueFromPipeline = $False,
+      ValueFromPipelineByPropertyName = $False
+    )]
+    [AllowNull()]
+    [System.Collections.Hashtable]
+    $Unavailable = $Null
   )
 
   Write-Debug -Message:'[Invoke-MaintenanceRun] Entering'
@@ -179,14 +195,20 @@ Function Invoke-MaintenanceRun {
         -Configuration:$Configuration `
         -MissingPermission:(Get-MaintenancePropertyValue -InputObject:(Get-MaintenancePropertyValue -InputObject:$Server -Name:'Permission' -Default:$Null) -Name:'MissingByStage' -Default:$Null) `
         -Stage:$Stage `
-        -Tier:([System.String](Get-MaintenancePropertyValue -InputObject:$Server -Name:'Tier' -Default:''))
+        -Tier:([System.String](Get-MaintenancePropertyValue -InputObject:$Server -Name:'Tier' -Default:'')) `
+        -Unavailable:$Unavailable
     )
 
-    # Permission shortfalls are reported before any stage starts.
+    # Permission shortfalls and missing components are reported before any stage starts.
     ForEach ($Entry In $Plan) {
       If (@($Entry.Missing).Count -gt 0) {
         $Notices.Add((New-MaintenanceNotice -Message:($Script:Message['Invoke-MaintenanceRun.Permission'] -f $Entry.Name, (@($Entry.Missing) -join ', ')) -Severity:'Warning' -Stage:$Entry.Name))
         Write-MaintenanceLog -Level:'Warning' -Log:$Log -Message:($Script:Message['Invoke-MaintenanceRun.Permission'] -f $Entry.Name, (@($Entry.Missing) -join ', ')) -Stage:$Entry.Name
+      }
+
+      If ([System.String]::IsNullOrEmpty($Entry.Unavailable) -eq $False) {
+        $Notices.Add((New-MaintenanceNotice -Message:($Script:Message['Invoke-MaintenanceRun.Unavailable'] -f $Entry.Name, $Entry.Unavailable) -Severity:'Warning' -Stage:$Entry.Name))
+        Write-MaintenanceLog -Level:'Warning' -Log:$Log -Message:($Script:Message['Invoke-MaintenanceRun.Unavailable'] -f $Entry.Name, $Entry.Unavailable) -Stage:$Entry.Name
       }
     }
 

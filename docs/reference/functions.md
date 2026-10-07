@@ -27,9 +27,17 @@ Private. Reads the attributes the decline policies use from one update.
 
 Private. Works out whether spDeleteUpdate carries Microsoft's fix, and the edited definition if not.
 
+## ConvertTo-MaintenanceAccountName
+
+Private. Names the account behind a security identifier.
+
 ## ConvertTo-MaintenanceByteText
 
 Private. Writes a number of bytes in human-readable units.
+
+## ConvertTo-MaintenanceCanonicalValue
+
+Private. Gives a command-line value the spelling the configuration uses.
 
 ## ConvertTo-MaintenanceConfigurationSchema
 
@@ -42,6 +50,10 @@ Private. Renders a configuration value for a validation message.
 ## ConvertTo-MaintenanceEffectiveConfiguration
 
 Private. Builds the effective configuration from a validated document.
+
+## ConvertTo-MaintenanceList
+
+Private. Splits command-line values that hold comma-separated lists.
 
 ## ConvertTo-MaintenanceObjectTree
 
@@ -58,6 +70,10 @@ Private. Renders a run report as plain text.
 ## ConvertTo-SqlIdentifier
 
 Private. Quotes a name as a SQL Server identifier.
+
+## ConvertTo-SqlServiceAccount
+
+Private. Names the per-service account of the SQL Server instance that holds SUSDB.
 
 ## ConvertTo-StaleComputerText
 
@@ -115,6 +131,10 @@ Private. Looks up one dotted configuration path in a parsed document.
 
 Private. Returns the name of the identity the run uses.
 
+## Get-MaintenanceIdentitySid
+
+Private. Returns the security identifier of the run identity.
+
 ## Get-MaintenanceMachineInfo
 
 Private. Reports the computer model and its logical-processor count.
@@ -127,6 +147,10 @@ Private. Returns the operating system the script runs on.
 
 Private. Works out where and how this run reports, even when the configuration is invalid.
 
+## Get-MaintenancePathAccess
+
+Private. Reads the owner and the access rules of a file or folder.
+
 ## Get-MaintenancePropertyValue
 
 Private. Reads a property that an object may not have.
@@ -134,6 +158,10 @@ Private. Reads a property that an object may not have.
 ## Get-MaintenanceRegistryKey
 
 Private. Reads one registry key under HKEY_LOCAL_MACHINE in a given registry view.
+
+## Get-MaintenanceScriptPath
+
+Private. Returns the path of the script file that is running.
 
 ## Get-MaintenanceStageCatalog
 
@@ -150,6 +178,10 @@ Private. Decides, for every stage in its fixed order, whether it runs.
 ## Get-MaintenanceTime
 
 Private. Returns the current local time.
+
+## Get-MaintenanceTrustedSid
+
+Private. Lists the principals that may change the folders of the script.
 
 ## Get-SusdbConnection
 
@@ -185,7 +217,7 @@ Private. Connects to the WSUS administration interface.
 
 ## Initialize-MaintenanceFolder
 
-Private. Makes sure a folder exists and can be written.
+Private. Makes sure a folder exists, is protected and can be written.
 
 ## Invoke-AcceleratedDecline
 
@@ -286,6 +318,10 @@ Private. Creates the run log file.
 ## New-MaintenanceNotice
 
 Private. Creates a notice: a condition that needs attention.
+
+## New-MaintenanceProtectedFolder
+
+Private. Creates one folder with a protected access control list.
 
 ## New-MaintenanceReport
 
@@ -405,7 +441,7 @@ Private. Ensures the non-clustered SUSDB indexes Microsoft recommends exist.
 
 ## Stop-MaintenanceRun
 
-Private. Ends a run that failed a precondition, after reporting the failure.
+Private. Ends a run that stopped early, after reporting the failure.
 
 ## Test-AppPoolHealth
 
@@ -427,6 +463,10 @@ Private. Evaluates a decline-rule condition against one update.
 
 Private. Compares the WSUS download settings with the values this deployment expects.
 
+## Test-MaintenanceAclSupport
+
+Private. Tells whether this host has Windows access control lists.
+
 ## Test-MaintenanceBudget
 
 Private. Reports whether the run's time budget has been used up.
@@ -446,6 +486,14 @@ Private. Validates one configuration value against its catalogue rule.
 ## Test-MaintenanceDeclineCondition
 
 Private. Validates one decline-rule condition tree.
+
+## Test-MaintenanceDependency
+
+Private. Checks that every dependency of the script is present before anything is changed.
+
+## Test-MaintenanceDependencyPresent
+
+Private. Tells whether one dependency of the script is present on this server.
 
 ## Test-MaintenanceDocumentStructure
 
@@ -467,9 +515,17 @@ Private. Validates an array of structured configuration entries.
 
 Private. Tells whether an event source is registered in a given event log.
 
+## Test-MaintenanceInstallation
+
+Private. Checks that nobody but the trusted principals can change the running script.
+
 ## Test-MaintenanceIntegerValue
 
 Private. Validates one whole-number configuration value.
+
+## Test-MaintenancePathProtection
+
+Private. Finds the principals other than the trusted ones that can change a file or folder.
 
 ## Test-MaintenancePathValue
 

@@ -184,6 +184,19 @@ Describe 'Invoke-MaintenanceRun' {
     $script:SeenServer | Should -Be $Server
   }
 
+  It 'skips a stage whose component is missing as unavailable, with a Warning notice before the first stage' {
+    $Run = Invoke-Run -Configuration (New-Configuration) -Extra @{ Unavailable = @{ IisLogRetention = 'the IIS configuration (applicationHost.config)' } }
+
+    $Outcome = $Run.Outcomes | Where-Object -FilterScript { $PSItem.Name -eq 'IisLogRetention' }
+    $Outcome.Status | Should -Be 'Skipped'
+    $Outcome.Reason | Should -Be 'unavailable: missing the IIS configuration (applicationHost.config)'
+    $script:Invoked | Should -Not -Contain 'IisLogRetention:False'
+    $Run.Notices | Should -HaveCount 1
+    $Run.Notices[0].Severity | Should -Be 'Warning'
+    $Run.Notices[0].Stage | Should -Be 'IisLogRetention'
+    $Run.Notices[0].Message | Should -Be 'Stage IisLogRetention is unavailable because the IIS configuration (applicationHost.config) is missing on this server; it runs again once that is in place.'
+  }
+
   It 'returns the outcomes gathered so far and an error notice after an unexpected failure' {
     # The handler lookup runs outside the stage's error boundary, so a failure there is unexpected.
     Mock -CommandName Get-MaintenanceStageHandler -ParameterFilter { $Name -eq 'SyncHistory' } -MockWith { Throw 'Unexpected engine failure.' }

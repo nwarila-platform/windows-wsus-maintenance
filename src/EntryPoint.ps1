@@ -26,16 +26,18 @@
       Report folder for this run.
 
   .PARAMETER ReportFormat
-      Report formats for this run: Text, Html, or both.
+      Report formats for this run: Text, Html, or both. Several values may also be given as
+      one comma-separated value, which is how they arrive from powershell.exe -File.
 
   .PARAMETER Stage
       Run only these stages, in their fixed order. Without it every enabled stage runs.
+      Several names may also be given as one comma-separated value.
 
   .PARAMETER ValidateOnly
       Validate the configuration and options, then stop.
 
   .PARAMETER Verbosity
-      Log verbosity for this run.
+      Log verbosity for this run: Error, Warning, Information, Verbose or Debug.
 
   .EXAMPLE
       .\Invoke-WsusMaintenance.ps1 -ConfigPath 'D:\Maintenance\maintenance.json' -ValidateOnly
@@ -98,7 +100,7 @@ Param (
     ValueFromPipeline = $False,
     ValueFromPipelineByPropertyName = $False
   )]
-  [ValidateSet('Text', 'Html')]
+  [ValidateNotNullOrEmpty()]
   [System.String[]]
   $ReportFormat,
 
@@ -130,7 +132,7 @@ Param (
     ValueFromPipeline = $False,
     ValueFromPipelineByPropertyName = $False
   )]
-  [ValidateSet('Error', 'Warning', 'Information', 'Verbose', 'Debug')]
+  [ValidateNotNullOrEmpty()]
   [System.String]
   $Verbosity
 )

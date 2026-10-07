@@ -34,7 +34,7 @@ Describe 'Set-SusdbCustomIndex' {
     }
   }
 
-  It 'creates each missing Microsoft index and tags it as created by the script' {
+  It 'creates each missing Microsoft index and tags it as created by the script, both in one transaction' {
     $Database = New-IndexDatabase
 
     $Result = Set-SusdbCustomIndex -Context (New-FakeStageContext -Database $Database)
@@ -44,14 +44,19 @@ Describe 'Set-SusdbCustomIndex' {
     $Result.Items | Should -Be @('nclLocalizedPropertyID on dbo.tbLocalizedPropertyForRevision: created', 'nclSupercededUpdateID on dbo.tbRevisionSupersedesUpdate: created')
     $Result.Message | Should -Be 'Created 2 and removed 0 index(es); 0 already present; 0 failed.'
     $Writes = Get-Writes -Database $Database
-    $Writes | Should -HaveCount 4
-    $Writes[0].CommandText | Should -Be 'CREATE NONCLUSTERED INDEX [nclLocalizedPropertyID] ON [dbo].[tbLocalizedPropertyForRevision] ([LocalizedPropertyID] ASC)'
-    $Writes[1].CommandText | Should -BeLike 'EXEC sys.sp_addextendedproperty @name = @property, @value = @value, *@level2type = N''INDEX'', @level2name = @name'
-    $Writes[1].Parameters.Values['@property'] | Should -Be 'CreatedBy'
-    $Writes[1].Parameters.Values['@value'] | Should -Be 'Invoke-WsusMaintenance'
-    $Writes[1].Parameters.Values['@table'] | Should -Be 'tbLocalizedPropertyForRevision'
-    $Writes[1].Parameters.Values['@name'] | Should -Be 'nclLocalizedPropertyID'
-    $Writes[2].CommandText | Should -Be 'CREATE NONCLUSTERED INDEX [nclSupercededUpdateID] ON [dbo].[tbRevisionSupersedesUpdate] ([SupersededUpdateID] ASC)'
+    $Writes | Should -HaveCount 2
+    $Lines = $Writes[0].CommandText -split '\r?\n'
+    $Lines | Should -HaveCount 5
+    $Lines[0] | Should -Be 'SET XACT_ABORT ON;'
+    $Lines[1] | Should -Be 'BEGIN TRANSACTION;'
+    $Lines[2] | Should -Be 'CREATE NONCLUSTERED INDEX [nclLocalizedPropertyID] ON [dbo].[tbLocalizedPropertyForRevision] ([LocalizedPropertyID] ASC);'
+    $Lines[3] | Should -BeLike 'EXEC sys.sp_addextendedproperty @name = @property, @value = @value, *@level2type = N''INDEX'', @level2name = @name;'
+    $Lines[4] | Should -Be 'COMMIT TRANSACTION;'
+    $Writes[0].Parameters.Values['@property'] | Should -Be 'CreatedBy'
+    $Writes[0].Parameters.Values['@value'] | Should -Be 'Invoke-WsusMaintenance'
+    $Writes[0].Parameters.Values['@table'] | Should -Be 'tbLocalizedPropertyForRevision'
+    $Writes[0].Parameters.Values['@name'] | Should -Be 'nclLocalizedPropertyID'
+    ($Writes[1].CommandText -split '\r?\n')[2] | Should -Be 'CREATE NONCLUSTERED INDEX [nclSupercededUpdateID] ON [dbo].[tbRevisionSupersedesUpdate] ([SupersededUpdateID] ASC);'
     $Database.Commands[0].Parameters.Values['@table'] | Should -Be 'dbo.tbLocalizedPropertyForRevision'
   }
 
@@ -74,7 +79,7 @@ Describe 'Set-SusdbCustomIndex' {
     $Result = Set-SusdbCustomIndex -Context (New-FakeStageContext -Database $Database -Extra $Extra)
 
     $Result.Counts['Created'] | Should -Be 1
-    (Get-Writes -Database $Database)[0].CommandText | Should -Be 'CREATE NONCLUSTERED INDEX [nclExtra]]Index] ON [dbo].[tbUpdate] ([LocalUpdateID] ASC, [UpdateID] ASC)'
+    ((Get-Writes -Database $Database)[0].CommandText -split '\r?\n')[2] | Should -Be 'CREATE NONCLUSTERED INDEX [nclExtra]]Index] ON [dbo].[tbUpdate] ([LocalUpdateID] ASC, [UpdateID] ASC);'
   }
 
   It 'removes only the indexes the script created when asked to' {

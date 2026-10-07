@@ -13,12 +13,17 @@ by the next run.
 | Parameter | Type | Default | Behavior |
 | --- | --- | --- | --- |
 | `-ConfigPath` | `System.String` | `%ProgramData%\NWarila\WsusMaintenance\maintenance.json` | Configuration document to read. |
-| `-Stage` | `System.String[]` | every enabled stage | Run only the listed stages, still in catalogue order. Stage names are matched without regard to case and recorded in their canonical spelling; a repeated or unknown name is a configuration error. A listed stage that configuration disables is still skipped. |
+| `-Stage` | `System.String[]` | every enabled stage | Run only the listed stages, still in catalogue order. Names may be separate values or one comma-separated value (`-Stage Backup,Reindex` under `powershell.exe -File`). Stage names are matched without regard to case and recorded in their canonical spelling; a repeated or unknown name is a configuration error. A listed stage that configuration disables is still skipped. |
 | `-DryRun` | Switch | off | Simulate: report what each stage would change without changing anything; SUSDB receives only reads. |
 | `-RemoveCustomIndexes` | Switch | off | Drop the custom SUSDB indexes this script created, and only those, instead of creating missing ones. Runs the `CustomIndexes` stage alone unless `-Stage` is given, which must then include `CustomIndexes`; otherwise it is a configuration error. |
 | `-ReportFolder` | `System.String` | configuration | Report folder for this run; an absolute path. |
-| `-ReportFormat` | `Text`, `Html` | configuration | Report formats for this run. |
+| `-ReportFormat` | `Text`, `Html` | configuration | Report formats for this run, as separate values or one comma-separated value. |
 | `-Verbosity` | `Error`, `Warning`, `Information`, `Verbose`, `Debug` | configuration | Log verbosity for this run. |
+
+Option values are matched without regard to case. An unknown value of any option is reported
+with the configuration problems and exits `4`, like an invalid document. `powershell.exe -File`,
+which a scheduled task uses, passes each argument as one literal string, so lists are given
+comma-separated there.
 | `-ValidateOnly` | Switch | off | Validate the configuration document and the options, emit the result, and stop. Writes no file and no event. |
 
 Every override given on the command line is recorded in the run result.
@@ -51,14 +56,17 @@ error record's target object carries the same validation summary with every prob
 ## Run order
 
 The configuration and options are validated first (`-ValidateOnly` stops there). The run then
-opens its run log under a new run identifier and chooses its report and summary folders. It
-requires a valid configuration, elevation (administrator or LocalSystem) and the system-wide lock
-`Global\Invoke-WsusMaintenance`, in that order. Under the lock it discovers the environment,
+opens its run log under a new run identifier and chooses its report and summary folders, creating
+any that are missing with a protected access control list. It requires a valid configuration,
+elevation (administrator or LocalSystem), data folders and a script location that only trusted
+principals can change, and the system-wide lock `Global\Invoke-WsusMaintenance`, in that order.
+Under the lock it discovers the environment, checks that the components it uses are present,
 connects to the WSUS administration interface and to SUSDB, detects the server tier, checks the
 database permissions of every stage and makes sure no synchronization runs, stopping one that
 does. It then plans every enabled stage (or the `-Stage` list) in catalogue order, skipping the
 decline and approval stages and stale-computer group moves on a replica (and when the server
-role is unknown) and any stage that lacks a database permission, runs each in its own error
+role is unknown), any stage that lacks a database permission and any stage whose component is
+missing (reported as `unavailable: missing <component>` with a Warning notice), runs each in its own error
 boundary within the time budget, restarts the synchronization it stopped, closes the database
 connection, releases the lock on every path, and saves the report and the summary. A stage the
 budget stops from starting is reported as `NotRun` with a warning and runs again on the next
@@ -73,11 +81,26 @@ those stages are skipped with the reason "skipped: no recent backup" and a High 
 
 These stop the run with a failure report and summary (what happened, the point reached, what to
 do), the matching event and exit code `3`, or `4` for an invalid configuration: a log folder that
-cannot be written; an invalid configuration; a run that is not elevated; a lock that cannot be
-created; an unsupported combination (WSUS not installed, Windows Server 2016 or older, SUSDB on
-Windows Internal Database or on a remote SQL Server); a WSUS administration interface or SUSDB
-that cannot be reached; and a synchronization that does not stop. A run that finds the lock held
-logs that and exits `5` with no report.
+cannot be written; an invalid configuration; a run that is not elevated; a data folder that
+principals other than SYSTEM, Administrators and the run identity can change (unless
+`run.permissiveFolderOverride` is set); a script file or folder that such principals can change
+(no override); a lock that cannot be created; an unsupported combination (WSUS not installed,
+Windows Server 2016 or older, SUSDB on Windows Internal Database or on a remote SQL Server); a
+missing component the whole run needs (the WSUS administration API or the SQL Server client); a
+WSUS administration interface or SUSDB that cannot be reached; and a synchronization that does not
+stop. A run that finds the lock held logs that and exits `5` with no report.
+
+An unexpected error after the run log is open does not escape unreported: the synchronization the
+run stopped is restarted, the connection closed and the lock released, and the run saves a
+failure report and summary (failure kind `StageError`, with the point the run reached), writes
+the completed-with-error event and exits `1`. An error before the run log exists exits `1` with
+the error on the error stream only; nothing has been changed at that point.
+
+Folders: a folder the run creates (log, report, summary, backup, and each missing level above
+them) gets full control for SYSTEM, Administrators and the run identity only, plus the SQL Server
+service account for the backup folder, with inheritance turned off. An existing folder's access
+control list is never changed. A backup folder that others can change fails the backup stage,
+which closes the backup gate.
 
 ## Outputs
 
@@ -96,7 +119,8 @@ the WSUS endpoint, the run identity, the database permissions and what the synch
 did, and the report records when each connection was established.
 
 A report or summary folder that cannot be written falls back to its built-in default with a
-warning. With an invalid configuration, each output setting the document states validly is
+warning; one that other principals can change does too, and then stops the run as described
+above. With an invalid configuration, each output setting the document states validly is
 still used and the rest take their defaults. No secret reaches any file or event.
 
 Events, under the source `eventLog.source` in `eventLog.logName`, with the identifiers in
@@ -107,9 +131,9 @@ Events, under the source `eventLog.source` in `eventLog.logName`, with the ident
 | Run started | `1000` | Information |
 | Completed: success | `1001` | Information |
 | Completed: warning | `1002` | Warning |
-| Completed: error | `1003` | Error |
+| Completed: error, or stopped by an unexpected error | `1003` | Error |
 | Stage error (one per failed stage) | `1100` | Error |
-| Precondition failure | `1200` | Error |
+| Precondition failure (exit code `3`) | `1200` | Error |
 | Invalid configuration | `1300` | Error |
 | Approvals made before the update files were local (one per run, naming each) | `1400` | Warning |
 
@@ -120,9 +144,9 @@ When the source is not registered in that log, the run logs one warning and writ
 | Code | Meaning | ErrorId |
 | --- | --- | --- |
 | `0` | Success. | N/A |
-| `1` | One or more stage errors, or an unhandled failure. | `StageError` or unmapped |
+| `1` | One or more stage errors, or an unexpected failure (with a failure report once the run log is open). | `StageError` or unmapped |
 | `2` | Completed with warnings. | N/A |
-| `3` | Aborted on a precondition (log folder, elevation, lock, unsupported server combination, connectivity, synchronization guard). | `PreconditionFailed` |
+| `3` | Aborted on a precondition (log folder, elevation, folder or script protection, lock, unsupported server combination, missing component, connectivity, synchronization guard). | `PreconditionFailed` |
 | `4` | Invalid configuration document or options. | `ConfigurationInvalid` |
 | `5` | Another run holds the lock. | `LockHeld` |
 | `6` | Delivery test failed (reserved). | `DeliveryFailed` |

@@ -11,6 +11,7 @@ $Script:Message += @{
   'Get-MaintenanceStagePlan.NotListed'    = 'not listed with -Stage'
   'Get-MaintenanceStagePlan.Replica'      = 'skipped: replica'
   'Get-MaintenanceStagePlan.RoleUnknown'  = 'skipped: server role unknown'
+  'Get-MaintenanceStagePlan.Unavailable'  = 'unavailable: missing {0}'
 }
 
 Function Get-MaintenanceStagePlan {
@@ -29,7 +30,9 @@ Function Get-MaintenanceStagePlan {
         replica", and when the tier is unknown it is skipped
         too; so is the stale-computer stage when its action moves computers into a group, because a
         replica inherits its groups. A stage whose database permissions are missing is skipped and
-        names them in Missing.
+        names them in Missing. A stage that needs a component missing on this server
+        (Test-MaintenanceDependency) is skipped as unavailable and names the component in
+        Unavailable.
 
     .PARAMETER Configuration
         Effective configuration.
@@ -42,6 +45,9 @@ Function Get-MaintenanceStagePlan {
 
     .PARAMETER Tier
         Detected server tier (TopTier, Autonomous, Replica or Unknown); empty before discovery.
+
+    .PARAMETER Unavailable
+        Missing components by stage name (Test-MaintenanceDependency), or null when not checked.
 
     .EXAMPLE
         Get-MaintenanceStagePlan -Configuration $Effective -Stage @('Backup', 'Reindex')
@@ -102,7 +108,18 @@ Function Get-MaintenanceStagePlan {
     [AllowEmptyString()]
     [ValidateSet('', 'TopTier', 'Autonomous', 'Replica', 'Unknown')]
     [System.String]
-    $Tier = ''
+    $Tier = '',
+
+    [Parameter(
+      DontShow = $False,
+      Mandatory = $False,
+      ParameterSetName = 'default',
+      ValueFromPipeline = $False,
+      ValueFromPipelineByPropertyName = $False
+    )]
+    [AllowNull()]
+    [System.Collections.Hashtable]
+    $Unavailable = $Null
   )
 
   Write-Debug -Message:'[Get-MaintenanceStagePlan] Entering'
@@ -116,6 +133,7 @@ Function Get-MaintenanceStagePlan {
   [System.String]$Private:Mode = [System.String]::Empty
   [System.Collections.Generic.List[PSCustomObject]]$Private:Plan = $Null
   [System.String]$Private:Reason = [System.String]::Empty
+  [System.String]$Private:Requires = [System.String]::Empty
   [PSCustomObject[]]$Private:Result = @()
 
   $Plan = [System.Collections.Generic.List[PSCustomObject]]::new()
@@ -126,6 +144,7 @@ Function Get-MaintenanceStagePlan {
   ForEach ($Entry In @(Get-MaintenanceStageCatalog)) {
     $Missing = @()
     $PermissionSkip = $False
+    $Requires = [System.String]::Empty
     If ($Null -ne $MissingPermission) {
       $Missing = [System.String[]]@($MissingPermission[$Entry.Name] | Where-Object -FilterScript { $Null -ne $PSItem })
     }
@@ -136,6 +155,10 @@ Function Get-MaintenanceStagePlan {
     } ElseIf (($Listed -eq $True) -and ($Stage -notcontains $Entry.Name)) {
       $Mode = 'Skip'
       $Reason = $Script:Message['Get-MaintenanceStagePlan.NotListed']
+    } ElseIf (($Null -ne $Unavailable) -and ($Unavailable.ContainsKey($Entry.Name) -eq $True)) {
+      $Mode = 'Skip'
+      $Requires = [System.String]$Unavailable[$Entry.Name]
+      $Reason = $Script:Message['Get-MaintenanceStagePlan.Unavailable'] -f $Requires
     } ElseIf (($Tier -eq 'Replica') -and (($Gated -contains $Entry.Name) -or (($Entry.Name -eq 'StaleComputers') -and ($GroupMove -eq $True)))) {
       $Mode = 'Skip'
       $Reason = $Script:Message['Get-MaintenanceStagePlan.Replica']
@@ -166,6 +189,7 @@ Function Get-MaintenanceStagePlan {
         Mode           = [System.String]$Mode
         Reason         = [System.String]$Reason
         Missing        = [System.String[]]$Missing
+        Unavailable    = [System.String]$Requires
       }
     )
   }

@@ -6,6 +6,7 @@
 $Script:Message += @{
   'Backup-Susdb.DrySummary'         = 'Would back up SUSDB to {0} and delete {1} old backup file(s).'
   'Backup-Susdb.Failed'             = 'The SUSDB backup to {0} failed: {1}'
+  'Backup-Susdb.Folder'             = 'the backup folder cannot be used: {0}'
   'Backup-Susdb.FailedSummary'      = 'backup failed'
   'Backup-Susdb.NoFile'             = 'the file is not there'
   'Backup-Susdb.NoPolicy'           = 'Backup retention is off (backup.minimumKept and backup.maximumAgeDays are both 0), so every backup file is kept.'
@@ -33,8 +34,11 @@ Function Backup-Susdb {
         (Enterprise, Standard and Developer), Always and Never force it. Before the backup the size is
         estimated from the space the database has reserved, and the destination must have that much
         free space plus backup.freeSpaceMarginPercent; otherwise the backup is skipped with a High
-        notice. The folder is created when it is missing. A failed backup raises a High notice and ends
-        the stage in error; the backup gate then holds back the stages that alter SUSDB. After a
+        notice. The folder is created when it is missing, protected: full control for SYSTEM,
+        Administrators, the run identity and the SQL Server service that writes the file, and nobody
+        else. An existing folder that other principals can change is not used (unless
+        run.permissiveFolderOverride is set), which fails the backup. A failed backup raises a High
+        notice and ends the stage in error; the backup gate then holds back the stages that alter SUSDB. After a
         successful backup, Remove-BackupFile applies the retention. A dry run checks the space and
         reports what it would do.
 
@@ -84,6 +88,7 @@ Function Backup-Susdb {
   [System.String[]]$Private:Items = @()
   [System.Collections.Generic.List[PSCustomObject]]$Private:Notices = $Null
   [System.String]$Private:Path = [System.String]::Empty
+  [PSCustomObject]$Private:Prepared = $Null
   [PSCustomObject]$Private:Preview = $Null
   [System.Int64]$Private:Required = 0
   [PSCustomObject]$Private:Retention = $Null
@@ -140,7 +145,18 @@ Function Backup-Susdb {
     $Summary = $Script:Message['Backup-Susdb.DrySummary'] -f $Path, $Preview.Deleted.Count
   } Else {
     Try {
-      $Null = [System.IO.Directory]::CreateDirectory($Folder)
+      # The folder is created protected, with full control for the SQL Server service that
+      #   writes the file, and an existing folder that other principals can change is not used
+      #   unless run.permissiveFolderOverride allows it (REQ-092).
+      $Prepared = Initialize-MaintenanceFolder -AllowPermissive:([System.Boolean]$Context.Configuration.run.permissiveFolderOverride) -Grant:(ConvertTo-SqlServiceAccount -SqlServerName:([System.String](Get-MaintenancePropertyValue -InputObject:$Context.Server.Environment -Name:'SqlServerName' -Default:''))) -Path:([System.String]$Settings.destination) -Protect
+      If ([System.String]::IsNullOrEmpty($Prepared.Error) -eq $False) {
+        Throw ($Script:Message['Backup-Susdb.Folder'] -f $Prepared.Error)
+      }
+
+      If ([System.String]::IsNullOrEmpty($Prepared.Warning) -eq $False) {
+        $Notices.Add((New-MaintenanceNotice -Message:$Prepared.Warning -Severity:'Warning' -Stage:'Backup'))
+      }
+
       $Statement = 'BACKUP DATABASE {0} TO DISK = @path WITH CHECKSUM, {1}, {2}, NAME = @name, STATS = 10' -f (ConvertTo-SqlIdentifier -Name:$DatabaseName), $(If ($Settings.sameDay -eq 'Append') { 'NOINIT' } Else { 'INIT' }), $(If ($Compress -eq $True) { 'COMPRESSION' } Else { 'NO_COMPRESSION' })
       $Null = Invoke-SusdbCommand -CommandText:$Statement -Connection:$Database -Log:$Context.Log -NonQuery -Parameter:@{ path = $Path; name = $SetName } -TimeoutSeconds:$Timeout
       $Counts['Created'] = 1

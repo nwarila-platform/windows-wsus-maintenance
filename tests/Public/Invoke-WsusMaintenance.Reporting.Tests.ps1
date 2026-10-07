@@ -39,6 +39,9 @@ Describe 'Invoke-WsusMaintenance reporting guarantees' {
     Mock -CommandName Get-WsusUpdateServer -MockWith { $script:UpdateServer }
     Mock -CommandName New-SqlConnection -MockWith { $script:Database }
     Mock -CommandName Wait-MaintenanceInterval -MockWith { }
+    # Every component is present, and folder protection is exercised in its own tests.
+    Mock -CommandName Test-MaintenanceDependencyPresent -MockWith { $True }
+    Mock -CommandName Test-MaintenanceAclSupport -MockWith { $False }
     Mock -CommandName New-MaintenanceLock -MockWith { New-FakeLock }
     Mock -CommandName Resolve-MaintenancePath -MockWith { Join-Path -Path $script:Root -ChildPath ($Path -replace '[^A-Za-z0-9]+', '_') }
     Mock -CommandName Test-MaintenanceEventSource -MockWith { $True }

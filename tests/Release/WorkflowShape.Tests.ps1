@@ -94,6 +94,27 @@ Describe 'release workflow shape' {
     $Release | Should -Match 'build/Invoke-WsusMaintenance\.ps1\.sha256'
   }
 
+  It 'publishes both JSON schemas beside the script, bound to the sealed subjects' {
+    $Seal = Get-WorkflowJobBlock -Name 'seal'
+    $Release = Get-WorkflowJobBlock -Name 'release'
+
+    $Seal | Should -Match "foreach \(\`$SchemaName in @\('maintenance\.schema\.json', 'summary\.schema\.json'\)\)"
+    $Seal | Should -Match "'docs\\reference\\\{0\}' -f \`$SchemaName"
+
+    foreach ($SchemaName in @('maintenance', 'summary')) {
+      $Seal | Should -Match ('build/{0}\.schema\.json' -f $SchemaName)
+      $Release | Should -Match ('build/{0}\.schema\.json' -f $SchemaName)
+    }
+
+    # The provenance subjects cover the script and both schemas, and the release job checks the
+    # downloaded schemas against those subjects before publishing them.
+    $Seal | Should -Match "@\('Invoke-WsusMaintenance\.ps1', 'maintenance\.schema\.json', 'summary\.schema\.json'\)"
+    $Release | Should -Match 'SEALED_SUBJECTS:\s+\$\{\{\s*needs\.seal\.outputs\.hashes\s*\}\}'
+    $Release | Should -Match 'base64 -d \| sha256sum -c -'
+    $Release | Should -Match 'gh release create "\$TAG_NAME" "\$ps1" "\$sha" "\$configSchema" "\$summarySchema"'
+    $Release | Should -Match 'gh release upload "\$TAG_NAME" "\$ps1" "\$sha" "\$configSchema" "\$summarySchema"'
+  }
+
   It 'lets the generator attach provenance to the published release' {
     # With upload-assets: true + upload-tag-name the SLSA generator's own softprops step attaches
     # the .intoto.jsonl to the tag's release (already published by the release job) without

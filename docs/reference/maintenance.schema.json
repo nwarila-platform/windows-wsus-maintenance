@@ -69,7 +69,7 @@
           "default": 1
         },
         "permissiveFolderOverride": {
-          "description": "Allow an existing data folder whose access control grants write access to principals other than SYSTEM, Administrators and the run identity.",
+          "description": "Use an existing log, report, summary or backup folder that principals other than SYSTEM, Administrators and the run identity can change, with a Warning notice, instead of refusing it. Its permissions are never changed, and the location of the script itself has no such override.",
           "type": "boolean",
           "default": false
         }

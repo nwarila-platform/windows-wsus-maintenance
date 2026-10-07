@@ -143,6 +143,8 @@ Describe 'Backup-Susdb' {
   BeforeEach {
     Mock -CommandName Get-MaintenanceTime -MockWith { $script:Now }
     Mock -CommandName Get-BackupDestinationSpace -MockWith { [System.Int64]100GB }
+    # Folder protection is exercised by the tests that turn it on.
+    Mock -CommandName Test-MaintenanceAclSupport -MockWith { $False }
     $script:Log = New-MaintenanceLog -Folder (Join-Path -Path $TestDrive -ChildPath ([System.Guid]::NewGuid().ToString('N'))) -RunId 'RUN' -Verbosity 'Information'
   }
 
@@ -180,6 +182,62 @@ Describe 'Backup-Susdb' {
 
     $Result.Counts['Created'] | Should -Be 1
     Get-FileName -Folder $Folder | Should -Be @('SUSDB_20261102.bak')
+  }
+
+  Context 'folder protection' {
+    BeforeEach {
+      Mock -CommandName Test-MaintenanceAclSupport -MockWith { $True }
+      Mock -CommandName Get-MaintenanceIdentitySid -MockWith { 'S-1-5-18' }
+      Mock -CommandName Get-MaintenancePathAccess -MockWith { $Null }
+      Mock -CommandName New-MaintenanceProtectedFolder -MockWith { $Null = [System.IO.Directory]::CreateDirectory($Path) }
+      # The folder of the stand-in file system that standard users may add files to.
+      $script:OpenAccess = [PSCustomObject]@{
+        OwnerSid  = 'S-1-5-32-544'
+        OwnerName = 'BUILTIN\Administrators'
+        Rules     = @([PSCustomObject]@{ Sid = 'S-1-5-32-545'; Name = 'BUILTIN\Users'; Rights = 6; Allow = $True })
+      }
+    }
+
+    It 'creates a missing backup folder protected, with full control for the SQL Server service that writes the file' {
+      $Folder = Join-Path -Path $TestDrive -ChildPath ([System.Guid]::NewGuid().ToString('N'))
+      $Context = New-BackupContext -Database (New-BackupDatabase) -Folder $Folder
+      $Context.Server.Environment | Add-Member -NotePropertyName SqlServerName -NotePropertyValue 'WSUS01\SQLEXPRESS'
+
+      $Result = Backup-Susdb -Context $Context
+
+      $Result.Status | Should -Be 'Success'
+      Should -Invoke -CommandName New-MaintenanceProtectedFolder -Times 1 -Exactly -ParameterFilter { ($Path -eq $Folder) -and (($Identity -join ',') -eq 'S-1-5-18,S-1-5-32-544,NT SERVICE\MSSQL$SQLEXPRESS') }
+      Get-FileName -Folder $Folder | Should -Be @('SUSDB_20261102.bak')
+    }
+
+    It 'makes no backup in an existing folder that standard users can change, and ends in error' {
+      Mock -CommandName Get-MaintenancePathAccess -MockWith { $script:OpenAccess }
+      $Database = New-BackupDatabase
+
+      $Result = Backup-Susdb -Context (New-BackupContext -Database $Database -Folder (New-BackupFolder))
+
+      $Result.Status | Should -Be 'Error'
+      $Result.Notices | Should -HaveCount 1
+      $Result.Notices[0].Severity | Should -Be 'High'
+      $Result.Notices[0].Message | Should -BeLike 'The SUSDB backup to *SUSDB_20261102.bak failed: the backup folder cannot be used: it can be changed by BUILTIN\Users, not only by SYSTEM, Administrators and the run identity, so the run does not use it'
+      Get-BackupCommand -Database $Database | Should -HaveCount 0
+      Should -Invoke -CommandName New-MaintenanceProtectedFolder -Times 0 -Exactly
+    }
+
+    It 'backs up into such a folder, with a warning, when the override allows it' {
+      Mock -CommandName Get-MaintenancePathAccess -MockWith { $script:OpenAccess }
+      $Database = New-BackupDatabase
+      $Context = New-BackupContext -Database $Database -Folder (New-BackupFolder)
+      $Context.Configuration.run.permissiveFolderOverride = $True
+
+      $Result = Backup-Susdb -Context $Context
+
+      $Result.Status | Should -Be 'Success'
+      Get-BackupCommand -Database $Database | Should -HaveCount 1
+      $Result.Notices | Should -HaveCount 1
+      $Result.Notices[0].Severity | Should -Be 'Warning'
+      $Result.Notices[0].Message | Should -BeLike "The folder '*' can be changed by BUILTIN\Users*; it is used because run.permissiveFolderOverride is set."
+    }
   }
 
   It 'uses <Options> for compression <Compression> on <Edition> with same-day <SameDay>' -ForEach @(

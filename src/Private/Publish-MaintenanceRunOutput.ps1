@@ -33,7 +33,8 @@ Function Publish-MaintenanceRunOutput {
         Exit code of the run.
 
     .PARAMETER Failure
-        Kind, Point, Message and Guidance of a precondition failure, or null.
+        Kind, Point, Message and Guidance of a run that stopped early (a failed precondition, an
+        invalid configuration or an unexpected error), or null.
 
     .PARAMETER Notice
         Every notice of the run.
@@ -224,10 +225,17 @@ Function Publish-MaintenanceRunOutput {
   }
 
   If ($Null -ne $Failure) {
-    If ($Failure.Kind -eq 'ConfigurationInvalid') {
-      $Kind = 'configurationInvalid'
-    } Else {
-      $Kind = 'preconditionFailure'
+    # An unexpected error that stopped the run is a failed run, not a failed precondition.
+    Switch ($Failure.Kind) {
+      'ConfigurationInvalid' {
+        $Kind = 'configurationInvalid'
+      }
+      'StageError' {
+        $Kind = 'runFailed'
+      }
+      Default {
+        $Kind = 'preconditionFailure'
+      }
     }
 
     Write-MaintenanceEvent -Channel:$Output.Events -Kind:$Kind -Message:($Script:Message['Publish-MaintenanceRunOutput.Stopped'] -f $Run.RunId, $Failure.Point, $ExitCode, $Failure.Message, $Failure.Guidance, $ReportList)

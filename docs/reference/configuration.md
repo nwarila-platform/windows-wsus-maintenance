@@ -12,6 +12,10 @@ problem is reported together, and nothing is corrected.
 - A missing key takes its default. `backup.destination` has no default because it is specific
   to each deployment; it must be given while backup is enabled.
 - Paths are absolute: drive-rooted, UNC, or rooted at one `%VARIABLE%` expanded at run time.
+- A log, report, summary or backup folder that does not exist is created with access for SYSTEM,
+  Administrators and the run identity only (and the SQL Server service for the backup folder).
+  An existing folder that other principals can change is not used unless
+  `run.permissiveFolderOverride` is `true`; its permissions are never changed.
 - Secrets are never written into this document.
 
 ## Minimal document
@@ -97,7 +101,7 @@ empty. The server's download settings are reported, never changed.
 | `run.databaseCommandTimeoutSeconds` | Integer | 0 to 604800 seconds | `0` | Client-side timeout for each database command. Zero means no timeout. |
 | `run.connectionTimeoutSeconds` | Integer | 1 to 600 seconds | `30` | Timeout for establishing the WSUS and SUSDB connections. |
 | `run.progressBatchSize` | Integer | 1 to 100000 items | `1` | Item-by-item stages log one progress entry per this many items. |
-| `run.permissiveFolderOverride` | Boolean | `true`, `false` | `false` | Allow an existing data folder whose access control grants write access to principals other than SYSTEM, Administrators and the run identity. |
+| `run.permissiveFolderOverride` | Boolean | `true`, `false` | `false` | Use an existing log, report, summary or backup folder that principals other than SYSTEM, Administrators and the run identity can change, with a Warning notice, instead of refusing it. Its permissions are never changed, and the location of the script itself has no such override. |
 
 ### `discovery`
 

@@ -80,7 +80,7 @@ Function New-MaintenanceReport {
         Exit code of the run.
 
     .PARAMETER Failure
-        Kind, Point, Message and Guidance of a precondition failure, or null.
+        Kind, Point, Message and Guidance of a run that stopped early, or null.
 
     .PARAMETER LogPath
         Path of the run log, if one was written.

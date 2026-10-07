@@ -70,8 +70,9 @@ Describe 'Write-MaintenanceSummary' {
 
   It 'validates against the published schema, with and without a failure' -Skip:(-not $script:CanValidate) {
     $Failed = New-MaintenanceReport -ExitCode 4 -Failure ([PSCustomObject]@{ Kind = 'ConfigurationInvalid'; Point = 'configuration validation'; Message = 'm'; Guidance = 'g' }) -MaxItems 1 -Run $script:Run -Status 'Error' -Validation $script:Validation
+    $Unexpected = New-MaintenanceReport -ExitCode 1 -Failure ([PSCustomObject]@{ Kind = 'StageError'; Point = 'stage run'; Message = 'm'; Guidance = 'g' }) -MaxItems 1 -Run $script:Run -Status 'Error' -Validation $script:Validation
 
-    ForEach ($Report In @($script:Report, $Failed)) {
+    ForEach ($Report In @($script:Report, $Failed, $Unexpected)) {
       $Written = Write-Summary -Report $Report -Folder $script:Folder
       Test-Json -Json (Get-Content -LiteralPath $Written.Path -Raw) -SchemaFile $script:SchemaPath | Should -BeTrue
     }

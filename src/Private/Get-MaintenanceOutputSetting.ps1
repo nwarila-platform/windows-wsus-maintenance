@@ -9,7 +9,8 @@ Function Get-MaintenanceOutputSetting {
 
     .DESCRIPTION
         Returns the report folder, formats and item limit, the log folder and verbosity, the summary
-        folder, the event-log settings and the built-in default folders. With a valid configuration
+        folder, the event-log settings, the built-in default folders and whether a data folder that
+        other principals can change may be used (run.permissiveFolderOverride). With a valid configuration
         the values come from it, command-line overrides included. When the document is missing,
         unreadable or invalid, each setting the document states validly is still used and every other
         setting takes its built-in default, so a failure report can be delivered; command-line
@@ -112,7 +113,6 @@ Function Get-MaintenanceOutputSetting {
       ValueFromPipelineByPropertyName = $False
     )]
     [AllowEmptyString()]
-    [ValidateSet('', 'Error', 'Warning', 'Information', 'Verbose', 'Debug')]
     [System.String]
     $Verbosity = ''
   )
@@ -139,7 +139,7 @@ Function Get-MaintenanceOutputSetting {
   $Rules = @{}
   $Values = @{}
   ForEach ($Entry In $Catalogue) {
-    If (($Entry.Path -clike 'report.*') -or ($Entry.Path -clike 'log.*') -or ($Entry.Path -clike 'summary.*') -or ($Entry.Path -clike 'eventLog.*')) {
+    If (($Entry.Path -clike 'report.*') -or ($Entry.Path -clike 'log.*') -or ($Entry.Path -clike 'summary.*') -or ($Entry.Path -clike 'eventLog.*') -or ($Entry.Path -ceq 'run.permissiveFolderOverride')) {
       $Defaults[$Entry.Path] = $Entry.Default
       $Rules[$Entry.Path] = $Entry
       $Value = $Entry.Default
@@ -167,7 +167,7 @@ Function Get-MaintenanceOutputSetting {
       $Values['report.formats'] = [System.Object[]]@($ReportFormat)
     }
 
-    If ([System.String]::IsNullOrEmpty($Verbosity) -eq $False) {
+    If (([System.String]::IsNullOrEmpty($Verbosity) -eq $False) -and (@(Test-MaintenanceConfigurationValue -Path:'-Verbosity' -Rule:$Rules['log.verbosity'] -Value:$Verbosity).Count -eq 0)) {
       $Values['log.verbosity'] = $Verbosity
     }
   }
@@ -178,15 +178,16 @@ Function Get-MaintenanceOutputSetting {
   }
 
   [PSCustomObject]$Result = [PSCustomObject]@{
-    ReportFolder         = [System.String]$Values['report.folder']
-    ReportFormats        = [System.String[]]@($Values['report.formats'])
-    MaxItems             = [System.Int32]$Values['report.maxItemsPerSection']
-    LogFolder            = [System.String]$Values['log.folder']
-    LogVerbosity         = [System.String]$Values['log.verbosity']
-    SummaryFolder        = [System.String]$Values['summary.folder']
-    DefaultReportFolder  = [System.String]$Defaults['report.folder']
-    DefaultSummaryFolder = [System.String]$Defaults['summary.folder']
-    EventLog             = [PSCustomObject]@{
+    ReportFolder             = [System.String]$Values['report.folder']
+    ReportFormats            = [System.String[]]@($Values['report.formats'])
+    MaxItems                 = [System.Int32]$Values['report.maxItemsPerSection']
+    LogFolder                = [System.String]$Values['log.folder']
+    LogVerbosity             = [System.String]$Values['log.verbosity']
+    SummaryFolder            = [System.String]$Values['summary.folder']
+    DefaultReportFolder      = [System.String]$Defaults['report.folder']
+    DefaultSummaryFolder     = [System.String]$Defaults['summary.folder']
+    PermissiveFolderOverride = [System.Boolean]$Values['run.permissiveFolderOverride']
+    EventLog                 = [PSCustomObject]@{
       Enabled  = [System.Boolean]$Values['eventLog.enabled']
       LogName  = [System.String]$Values['eventLog.logName']
       Source   = [System.String]$Values['eventLog.source']

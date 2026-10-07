@@ -105,4 +105,33 @@ Describe 'Resolve-MaintenanceOverride' {
 
     $Result.Configuration.report.folder | Should -Be 'D:\R'
   }
+
+  It 'reports an unknown verbosity as an option error and applies a valid one' {
+    $Result = Resolve-MaintenanceOverride -Configuration (New-Effective) -Verbosity 'Loud'
+
+    $Result.Errors | Should -Be @('-Verbosity: must be one of Error, Warning, Information, Verbose, Debug (got "Loud").')
+    (Resolve-MaintenanceOverride -Configuration (New-Effective) -Verbosity 'Debug').Configuration.log.verbosity | Should -Be 'Debug'
+  }
+}
+
+Describe 'ConvertTo-MaintenanceList' {
+  BeforeAll {
+    . (Join-Path -Path $PSScriptRoot -ChildPath '../../build/Invoke-WsusMaintenance.Functions.ps1')
+  }
+
+  It 'splits comma-separated values, trims them and drops empty parts' {
+    ConvertTo-MaintenanceList -Value @('Backup, Reindex', 'HealthChecks', ' ,') | Should -Be @('Backup', 'Reindex', 'HealthChecks')
+    @(ConvertTo-MaintenanceList -Value @()) | Should -HaveCount 0
+  }
+}
+
+Describe 'ConvertTo-MaintenanceCanonicalValue' {
+  BeforeAll {
+    . (Join-Path -Path $PSScriptRoot -ChildPath '../../build/Invoke-WsusMaintenance.Functions.ps1')
+  }
+
+  It 'gives a value the allowed spelling, and leaves an unknown value for validation' {
+    ConvertTo-MaintenanceCanonicalValue -Value 'debug' -Allowed @('Error', 'Debug') | Should -BeExactly 'Debug'
+    ConvertTo-MaintenanceCanonicalValue -Value 'Loud' -Allowed @('Error', 'Debug') | Should -BeExactly 'Loud'
+  }
 }

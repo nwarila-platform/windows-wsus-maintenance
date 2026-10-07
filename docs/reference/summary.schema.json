@@ -66,7 +66,7 @@
       "items": { "type": "string" }
     },
     "failure": {
-      "description": "Why a run stopped before its stages, or null.",
+      "description": "Why a run stopped early, or null: a failed precondition or an invalid configuration before any stage, or an unexpected error (StageError) at the point it reached.",
       "oneOf": [
         { "type": "null" },
         {
@@ -74,7 +74,7 @@
           "additionalProperties": false,
           "required": ["kind", "point", "message", "guidance"],
           "properties": {
-            "kind": { "enum": ["PreconditionFailed", "ConfigurationInvalid"] },
+            "kind": { "enum": ["PreconditionFailed", "ConfigurationInvalid", "StageError"] },
             "point": { "type": "string" },
             "message": { "type": "string" },
             "guidance": { "type": "string" }

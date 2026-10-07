@@ -32,6 +32,20 @@ jobs:
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Task Build
 
+      - name: Stage the JSON schemas beside the script
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $BuildPath = Join-Path -Path $PWD -ChildPath 'build'
+          foreach ($SchemaName in @('maintenance.schema.json', 'summary.schema.json')) {
+            $SourcePath = Join-Path -Path $PWD -ChildPath ('docs\reference\{0}' -f $SchemaName)
+            if (-not (Test-Path -LiteralPath $SourcePath -PathType Leaf)) {
+              throw ('Schema missing before sealing: {0}' -f $SourcePath)
+            }
+
+            Copy-Item -LiteralPath $SourcePath -Destination (Join-Path -Path $BuildPath -ChildPath $SchemaName)
+          }
+
       - name: Create SHA-256 sidecar
         shell: powershell
         run: |
@@ -55,10 +69,13 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $ArtifactPath = Join-Path -Path $PWD -ChildPath 'build\Invoke-WsusMaintenance.ps1'
-          $ArtifactName = Split-Path -Path $ArtifactPath -Leaf
-          $HashLower = (Get-FileHash -Algorithm SHA256 -Path $ArtifactPath).Hash.ToLowerInvariant()
-          $Subject = '{0}  {1}{2}' -f $HashLower, $ArtifactName, "`n"
+          $Subject = ''
+          foreach ($AssetName in @('Invoke-WsusMaintenance.ps1', 'maintenance.schema.json', 'summary.schema.json')) {
+            $AssetPath = Join-Path -Path $PWD -ChildPath ('build\{0}' -f $AssetName)
+            $HashLower = (Get-FileHash -Algorithm SHA256 -Path $AssetPath).Hash.ToLowerInvariant()
+            $Subject += '{0}  {1}{2}' -f $HashLower, $AssetName, "`n"
+          }
+
           $Base64 = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($Subject))
           "hashes=$Base64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
@@ -88,6 +105,8 @@ jobs:
             build/Invoke-WsusMaintenance.ps1
             build/Invoke-WsusMaintenance.ps1.sha256
             build/Invoke-WsusMaintenance.Functions.ps1
+            build/maintenance.schema.json
+            build/summary.schema.json
           if-no-files-found: error
 
   validate:
@@ -160,17 +179,26 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ github.ref_name }}
           SEALED_DIGEST: ${{ needs.seal.outputs.digest }}
+          SEALED_SUBJECTS: ${{ needs.seal.outputs.hashes }}
         run: |
           set -euo pipefail
           ps1='build/Invoke-WsusMaintenance.ps1'
           sha='build/Invoke-WsusMaintenance.ps1.sha256'
+          configSchema='build/maintenance.schema.json'
+          summarySchema='build/summary.schema.json'
 
           # Binding-critical guard: the published bytes must match the digest sealed in the
           # module-free build job . sha256sum -c fails non-zero on mismatch.
           echo "${SEALED_DIGEST}  ${ps1}" | sha256sum -c -
 
+          # The schemas published beside the script must match the provenance subjects sealed
+          # with it.
+          (cd build && echo "${SEALED_SUBJECTS}" | base64 -d | sha256sum -c -)
+
           notes=$(cat <<'NOTES'
           Release assets are built by build.ps1 on Windows PowerShell 5.1 (sealed build, validated with Analyze/Test/Smoke).
+
+          maintenance.schema.json describes the configuration document and summary.schema.json describes the machine-readable run summary; both are published beside the script they belong to.
 
           SLSA build provenance (Invoke-WsusMaintenance.ps1.intoto.jsonl) is attached and signed via Sigstore; verify with slsa-verifier (see the README Releases section). The SHA-256 sidecar is a quick offline integrity check. Authenticode publisher signing is deferred.
           NOTES
@@ -178,9 +206,9 @@ jobs:
 
           # gh in an `if` condition: a non-zero "release not found" does not trip `set -e`.
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" "$ps1" "$sha" --clobber
+            gh release upload "$TAG_NAME" "$ps1" "$sha" "$configSchema" "$summarySchema" --clobber
           else
-            gh release create "$TAG_NAME" "$ps1" "$sha" --title "$TAG_NAME" --notes "$notes" --verify-tag
+            gh release create "$TAG_NAME" "$ps1" "$sha" "$configSchema" "$summarySchema" --title "$TAG_NAME" --notes "$notes" --verify-tag
           fi
 
   provenance:

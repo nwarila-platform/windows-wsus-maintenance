@@ -384,8 +384,8 @@ Function New-UpkeepResponder {
   }.GetNewClosure()
 }
 
-# A client computer as the WSUS administration API describes it. Delete fails for a computer the
-#   update server lists in -FailingComputers.
+# A client computer as the WSUS administration API describes it. Delete removes it from the
+#   update server, and fails for a computer the update server lists in -FailingComputers.
 Function New-FakeComputer {
   Param (
     [System.String]$Name,
@@ -405,6 +405,7 @@ Function New-FakeComputer {
   $Computer | Add-Member -MemberType ScriptMethod -Name Delete -Value {
     If ($this.State.FailingComputers -contains $this.FullDomainName) { Throw ('The computer {0} could not be deleted.' -f $this.FullDomainName) }
     $this.State.Deleted.Add($this.FullDomainName)
+    $Null = $this.State.Computers.Remove($this)
   }
   $Computer
 }

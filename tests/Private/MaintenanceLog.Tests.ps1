@@ -37,14 +37,14 @@ Describe 'Run log' {
       $Log = New-MaintenanceLog -Folder (Join-Path -Path $File -ChildPath 'logs') -RunId 'r' -Verbosity 'Information'
 
       $Log.Path | Should -BeNullOrEmpty
-      $Log.Error | Should -BeLike "The log folder '*logs' cannot be written: *"
+      $Log.Error | Should -BeLike "The log folder '*logs' cannot be used: *"
     }
 
     It 'reports a log file that cannot be created' {
       $Log = New-MaintenanceLog -Folder $script:Folder -RunId 'missing-folder/run' -Verbosity 'Information'
 
       $Log.Path | Should -BeNullOrEmpty
-      $Log.Error | Should -BeLike "The log folder '*' cannot be written: *"
+      $Log.Error | Should -BeLike "The log folder '*' cannot be used: *"
     }
   }
 

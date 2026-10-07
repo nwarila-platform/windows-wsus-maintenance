@@ -16,7 +16,8 @@ Function Resolve-MaintenanceOverride {
 
     .DESCRIPTION
         Checks the stage names given with -Stage and records them in their canonical
-        spelling, then applies the overrides the command line may make for one run:
+        spelling, checks the report formats and the verbosity against the values the
+        configuration allows, then applies the overrides the command line may make for one run:
         dry-run, report folder and formats, and log verbosity. Every
         override in effect is described for the run log. Problems are returned, not
         thrown, so they can be reported together with configuration errors. When no
@@ -161,7 +162,6 @@ Function Resolve-MaintenanceOverride {
       ValueFromPipelineByPropertyName = $False
     )]
     [AllowEmptyString()]
-    [ValidateSet('', 'Error', 'Warning', 'Information', 'Verbose', 'Debug')]
     [System.String]
     $Verbosity = ''
   )
@@ -178,6 +178,7 @@ Function Resolve-MaintenanceOverride {
   [System.Collections.Generic.HashSet[System.String]]$Private:SeenStages = $Null
   [System.Collections.Generic.List[System.String]]$Private:Stages = $Null
   [System.String[]]$Private:StageNames = @()
+  [PSCustomObject]$Private:VerbosityRule = $Null
   [PSCustomObject]$Private:Result = $Null
 
   $Errors = [System.Collections.Generic.List[System.String]]::new()
@@ -192,6 +193,7 @@ Function Resolve-MaintenanceOverride {
 
   $FolderRule = $Catalogue | Where-Object -FilterScript { $PSItem.Path -ceq 'report.folder' } | Select-Object -First:1
   $FormatRule = $Catalogue | Where-Object -FilterScript { $PSItem.Path -ceq 'report.formats' } | Select-Object -First:1
+  $VerbosityRule = $Catalogue | Where-Object -FilterScript { $PSItem.Path -ceq 'log.verbosity' } | Select-Object -First:1
   $StageNames = [System.String[]]@(Get-MaintenanceStageCatalog | ForEach-Object -Process:({ $PSItem.Name }))
 
   $SeenStages = [System.Collections.Generic.HashSet[System.String]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -221,6 +223,12 @@ Function Resolve-MaintenanceOverride {
   If ($PSBoundParameters.ContainsKey('ReportFormat') -eq $True) {
     ForEach ($FormatError In @(Test-MaintenanceConfigurationValue -Path:'-ReportFormat' -Rule:$FormatRule -Value:([System.Object[]]@($ReportFormat)))) {
       $Errors.Add($FormatError)
+    }
+  }
+
+  If ([System.String]::IsNullOrEmpty($Verbosity) -eq $False) {
+    ForEach ($VerbosityError In @(Test-MaintenanceConfigurationValue -Path:'-Verbosity' -Rule:$VerbosityRule -Value:$Verbosity)) {
+      $Errors.Add($VerbosityError)
     }
   }
 

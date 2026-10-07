@@ -37,3 +37,7 @@ The three scopes use independent four-digit numbering namespaces.
 | [repo/0004](repo/0004-exit-codes-and-run-status.md) | Fixed Exit Codes Mapped from Error Identifiers | Accepted |
 | [repo/0005](repo/0005-server-tier-gating.md) | Detect the Server Tier Every Run and Never Change It | Accepted |
 | [repo/0006](repo/0006-nightly-run-of-every-stage.md) | Run Every Enabled Stage Each Night and Keep No State Between Runs | Accepted |
+| [repo/0007](repo/0007-protected-folders-and-runtime-integrity.md) | Protect the Script's Folders and Run Only Code That Others Cannot Change | Accepted |
+| [repo/0008](repo/0008-failure-handling-and-rerun-safety.md) | Report Every Failure and Leave Nothing Half-Done for the Next Run | Accepted |
+| [repo/0009](repo/0009-release-assets-and-schemas.md) | Publish the Script, Its Schemas and Their Provenance Together | Accepted |
+| [repo/0010](repo/0010-destructive-actions-opt-in.md) | Build Destructive and Approval Actions Behind Explicit Opt-In | Accepted |

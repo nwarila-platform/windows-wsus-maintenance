@@ -29,6 +29,7 @@ Describe 'Run output' {
     $script:Root = Join-Path -Path $TestDrive -ChildPath ([System.Guid]::NewGuid().ToString('N'))
     $script:Events = [System.Collections.Generic.List[PSCustomObject]]::new()
     Mock -CommandName Get-MaintenanceTime -MockWith { $script:Start }
+    Mock -CommandName Test-MaintenanceAclSupport -MockWith { $False }
     Mock -CommandName Test-MaintenanceEventSource -MockWith { $True }
     Mock -CommandName Write-MaintenanceEventEntry -MockWith { $script:Events.Add([PSCustomObject]@{ EventId = $EventId; EntryType = $EntryType; Message = $Message }) }
   }
@@ -56,7 +57,7 @@ Describe 'Run output' {
 
       $Output = Open-MaintenanceRunOutput -RunId 'RUN' -Setting $Setting
 
-      $Output.Log.Error | Should -BeLike "The log folder '*' cannot be written: *"
+      $Output.Log.Error | Should -BeLike "The log folder '*' cannot be used: *"
       $Output.ReportFolder | Should -Be (Join-Path -Path $script:Root -ChildPath 'DefaultReports')
       $Output.Notices | Should -HaveCount 2
       $Output.Notices.Severity | Should -Be @('Warning', 'Warning')

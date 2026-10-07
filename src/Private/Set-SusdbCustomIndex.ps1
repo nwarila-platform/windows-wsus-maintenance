@@ -26,7 +26,8 @@ Function Set-SusdbCustomIndex {
         Checks, on every run, each index Microsoft publishes for faster cleanup (nclLocalizedPropertyID
         on dbo.tbLocalizedPropertyForRevision and nclSupercededUpdateID on dbo.tbRevisionSupersedesUpdate)
         and each index in customIndexes.additional. A missing index is created and tagged with the
-        extended property CreatedBy = Invoke-WsusMaintenance; an existing index is left untouched and
+        extended property CreatedBy = Invoke-WsusMaintenance in one transaction, so an interrupted run
+        leaves either both or neither; an existing index is left untouched and
         reported as already present. With the removal action (-RemoveCustomIndexes) the stage instead
         drops only the indexes that carry the tag, so indexes it did not create are never touched. A
         failure (for example a missing permission or a lock time-out) is a warning and does not stop
@@ -68,6 +69,13 @@ Function Set-SusdbCustomIndex {
   # Initialize Variable(s)
   [System.String]$Private:Columns = [System.String]::Empty
   [System.Collections.Specialized.OrderedDictionary]$Private:Counts = $Null
+  [System.String]$Private:CreateCommand = @(
+    'SET XACT_ABORT ON;',
+    'BEGIN TRANSACTION;',
+    'CREATE NONCLUSTERED INDEX {0} ({1});',
+    'EXEC sys.sp_addextendedproperty @name = @property, @value = @value, @level0type = N''SCHEMA'', @level0name = N''dbo'', @level1type = N''TABLE'', @level1name = @table, @level2type = N''INDEX'', @level2name = @name;',
+    'COMMIT TRANSACTION;'
+  ) -join [System.Environment]::NewLine
   [System.Object]$Private:Database = $Null
   [System.Collections.Generic.List[PSCustomObject]]$Private:Definitions = $Null
   [System.Collections.Generic.List[System.String]]$Private:Items = $Null
@@ -89,7 +97,6 @@ Function Set-SusdbCustomIndex {
   ) -join [System.Environment]::NewLine
   [System.String]$Private:Status = 'Success'
   [System.String]$Private:Summary = [System.String]::Empty
-  [System.String]$Private:TagCommand = 'EXEC sys.sp_addextendedproperty @name = @property, @value = @value, @level0type = N''SCHEMA'', @level0name = N''dbo'', @level1type = N''TABLE'', @level1name = @table, @level2type = N''INDEX'', @level2name = @name'
   [System.Object]$Private:Target = $Null
   [System.Int32]$Private:Timeout = 0
   [PSCustomObject]$Private:Result = $Null
@@ -144,8 +151,10 @@ Function Set-SusdbCustomIndex {
       } Else {
         If ($Context.DryRun -eq $False) {
           $Columns = @(@($Definition.columns) | ForEach-Object -Process:({ '{0} ASC' -f (ConvertTo-SqlIdentifier -Name:([System.String]$PSItem)) })) -join ', '
-          $Null = Invoke-SusdbCommand -CommandText:('CREATE NONCLUSTERED INDEX {0} ({1})' -f $Target, $Columns) -Connection:$Database -Log:$Context.Log -NonQuery -TimeoutSeconds:$Timeout
-          $Null = Invoke-SusdbCommand -CommandText:$TagCommand -Connection:$Database -Log:$Context.Log -NonQuery -Parameter:@{ property = $PropertyName; value = $PropertyValue; table = [System.String]$Definition.table; name = [System.String]$Definition.name } -TimeoutSeconds:$Timeout
+          # The index and its tag are created in one transaction that any error rolls back, so an
+          #   interrupted run never leaves an untagged index that the removal action could not
+          #   recognise: https://learn.microsoft.com/sql/t-sql/statements/set-xact-abort-transact-sql
+          $Null = Invoke-SusdbCommand -CommandText:($CreateCommand -f $Target, $Columns) -Connection:$Database -Log:$Context.Log -NonQuery -Parameter:@{ property = $PropertyName; value = $PropertyValue; table = [System.String]$Definition.table; name = [System.String]$Definition.name } -TimeoutSeconds:$Timeout
         }
 
         $Counts['Created'] = $Counts['Created'] + 1

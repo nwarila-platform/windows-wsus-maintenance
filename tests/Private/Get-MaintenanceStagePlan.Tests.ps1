@@ -57,7 +57,7 @@ Describe 'Get-MaintenanceStagePlan' {
 
     (Get-Entry -Plan $Plan -Name 'ObsoleteUpdates').AltersDatabase | Should -BeTrue
     (Get-Entry -Plan $Plan -Name 'HealthChecks').AltersDatabase | Should -BeFalse
-    @($Plan[0].PSObject.Properties.Name) | Should -Be @('Name', 'Order', 'AltersDatabase', 'Mode', 'Reason', 'Missing')
+    @($Plan[0].PSObject.Properties.Name) | Should -Be @('Name', 'Order', 'AltersDatabase', 'Mode', 'Reason', 'Missing', 'Unavailable')
   }
 
   It 'skips every decline stage on a replica, stating the reason' {
@@ -99,5 +99,16 @@ Describe 'Get-MaintenanceStagePlan' {
     (Get-Entry -Plan $Plan -Name 'DeclinedDeletion').Reason | Should -Be 'disabled by configuration'
     (Get-Entry -Plan $Plan -Name 'DeclinedDeletion').Missing | Should -HaveCount 0
     (Get-Entry -Plan $Plan -Name 'Reindex').Missing | Should -HaveCount 0
+  }
+
+  It 'skips a stage whose component is missing as unavailable, naming the component, unless it is disabled anyway' {
+    $Plan = @(Get-MaintenanceStagePlan -Configuration $script:Configuration -Unavailable @{ IisLogRetention = 'the IIS configuration (applicationHost.config)'; DeclinedDeletion = 'something' })
+
+    (Get-Entry -Plan $Plan -Name 'IisLogRetention').Mode | Should -Be 'Skip'
+    (Get-Entry -Plan $Plan -Name 'IisLogRetention').Reason | Should -Be 'unavailable: missing the IIS configuration (applicationHost.config)'
+    (Get-Entry -Plan $Plan -Name 'IisLogRetention').Unavailable | Should -Be 'the IIS configuration (applicationHost.config)'
+    (Get-Entry -Plan $Plan -Name 'DeclinedDeletion').Reason | Should -Be 'disabled by configuration'
+    (Get-Entry -Plan $Plan -Name 'DeclinedDeletion').Unavailable | Should -Be ''
+    (Get-Entry -Plan $Plan -Name 'Reindex').Mode | Should -Be 'Run'
   }
 }

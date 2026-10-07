@@ -68,6 +68,9 @@ Describe 'Invoke-WsusMaintenance' {
     Mock -CommandName New-SqlConnection -MockWith { $script:Database }
     Mock -CommandName Wait-MaintenanceInterval -MockWith { }
     Mock -CommandName Get-BackupDestinationSpace -MockWith { [System.Int64]100GB }
+    # Every component is present, and folder protection is exercised in its own tests.
+    Mock -CommandName Test-MaintenanceDependencyPresent -MockWith { $True }
+    Mock -CommandName Test-MaintenanceAclSupport -MockWith { $False }
     Mock -CommandName New-WsusAdministrationObject -MockWith { New-FakeWsusObject -TypeName $TypeName }
     Mock -CommandName New-MaintenanceLock -MockWith { $script:Lock }
     Mock -CommandName Get-MaintenanceTime -MockWith { [System.DateTime]::new(2026, 11, 2, 2, 0, 0) }
@@ -94,6 +97,20 @@ Describe 'Invoke-WsusMaintenance' {
     Should -Invoke -CommandName New-MaintenanceLock -Times 0 -Exactly
     Test-Path -LiteralPath $script:Root | Should -BeFalse
     $script:Events | Should -HaveCount 0
+  }
+
+  It 'takes a stage list and report formats given as one comma-separated value, as powershell.exe -File passes them' {
+    $Result = Invoke-WsusMaintenance -ConfigPath (Join-Path -Path $script:FixtureRoot -ChildPath 'minimal-valid.json') -Stage 'reindex,Backup' -ReportFormat 'html, Text' -Verbosity 'debug' -ValidateOnly
+
+    $Result.ExitCode | Should -Be 0
+    $Result.Validation.Stages | Should -Be @('Reindex', 'Backup')
+    $Result.Validation.Configuration.report.formats | Should -BeExactly @('Html', 'Text')
+    $Result.Validation.Configuration.log.verbosity | Should -BeExactly 'Debug'
+  }
+
+  It 'reports an unknown verbosity or report format as a configuration error' {
+    { Invoke-WsusMaintenance -ConfigPath (Join-Path -Path $script:FixtureRoot -ChildPath 'minimal-valid.json') -Verbosity 'Loud' -ReportFormat 'Text,Pdf' -ValidateOnly } |
+      Should -Throw -ErrorId 'ConfigurationInvalid,New-ErrorRecord' -ExpectedMessage "*-ReportFormat[[]1]: must be one of Text, Html (got `"Pdf`").*-Verbosity: must be one of Error, Warning, Information, Verbose, Debug (got `"Loud`")."
   }
 
   It 'stops a validation of an invalid configuration with ConfigurationInvalid and writes nothing' {
@@ -414,14 +431,168 @@ Describe 'Invoke-WsusMaintenance' {
       $script:Lock.Disposed | Should -Be 1
     }
 
-    It 'restarts the synchronization it stopped even when the run fails unexpectedly' {
+    It 'restarts the synchronization it stopped, saves a failure report and stops with StageError when the run fails unexpectedly (REQ-098)' {
       $script:UpdateServer = New-FakeUpdateServer -Statuses @('Running', 'NotProcessing')
-      Mock -CommandName Invoke-MaintenanceRun -MockWith { Throw 'Unexpected failure.' }
+      Mock -CommandName Invoke-MaintenanceRun -MockWith { Throw 'Injected failure.' }
 
-      { Invoke-Minimal } | Should -Throw -ExpectedMessage 'Unexpected failure.'
+      { Invoke-Minimal } | Should -Throw -ErrorId 'StageError,New-ErrorRecord' -ExpectedMessage 'An unexpected error stopped the run: Injected failure.'
 
       $script:UpdateServer.State.StartCalls | Should -Be 1
       $script:Database.Disposed | Should -Be 1
+      $script:Lock.Disposed | Should -Be 1
+      $Report = Get-ReportText
+      $Report | Should -Match 'Point reached : stage run'
+      $Report | Should -Match 'What happened : An unexpected error stopped the run: Injected failure\.'
+      $Report | Should -Match 'Synchronization\s+: running at start; stopped by the run \(attempt 1\); restarted after the run'
+      $Summary = Get-Content -LiteralPath (Get-Artifact -Configured $script:Summaries -Extension 'json') -Raw | ConvertFrom-Json
+      $Summary.status | Should -Be 'Error'
+      $Summary.exitCode | Should -Be 1
+      $Summary.failure.kind | Should -Be 'StageError'
+      $Summary.failure.point | Should -Be 'stage run'
+      $script:Events.EventId | Should -Be @(1000, 1003)
+      $script:Events[1].EntryType | Should -Be 'Error'
+      $script:Events[1].Message | Should -BeLike ('Run {0} stopped at stage run with exit code 1: An unexpected error stopped the run: Injected failure.*' -f $script:RunId)
+    }
+
+    It 'names the point an unexpected failure reached before the stages, with no synchronization to restart' {
+      Mock -CommandName Get-WsusServerRole -MockWith { Throw 'Injected role failure.' }
+
+      { Invoke-Minimal } | Should -Throw -ErrorId 'StageError,New-ErrorRecord'
+
+      $script:UpdateServer.State.StartCalls | Should -Be 0
+      $script:Database.Disposed | Should -Be 1
+      $script:Lock.Disposed | Should -Be 1
+      Get-ReportText | Should -Match 'Point reached : server role detection'
+      $script:Events.EventId | Should -Be @(1003)
+    }
+
+    It 'reports an unexpected failure while saving the outputs as a failed run' {
+      $script:PublishCalls = 0
+      Mock -CommandName Publish-MaintenanceRunOutput -MockWith {
+        $script:PublishCalls++
+        If ($Null -eq $Failure) { Throw 'Injected publish failure.' }
+        [PSCustomObject]@{ ReportPaths = [System.String[]]@(); SummaryPath = '' }
+      }
+
+      { Invoke-Minimal } | Should -Throw -ErrorId 'StageError,New-ErrorRecord' -ExpectedMessage 'An unexpected error stopped the run: Injected publish failure.'
+
+      $script:PublishCalls | Should -Be 2
+      Should -Invoke -CommandName Publish-MaintenanceRunOutput -Times 1 -Exactly -ParameterFilter { ($Null -ne $Failure) -and ($Failure.Kind -eq 'StageError') -and ($Failure.Point -eq 'saving of the report and summary') }
+      $script:Lock.Disposed | Should -Be 1
+    }
+
+    It 'keeps the exit code of a coded stop raised inside the run' {
+      Mock -CommandName Invoke-MaintenanceRun -MockWith {
+        New-ErrorRecord -Category:([System.Management.Automation.ErrorCategory]::ResourceUnavailable) -ErrorId:([MaintenanceExitCode]::PreconditionFailed) -IsFatal -Message:'Coded stop.'
+      }
+
+      { Invoke-Minimal } | Should -Throw -ErrorId 'PreconditionFailed,New-ErrorRecord' -ExpectedMessage 'Coded stop.'
+
+      $script:Lock.Disposed | Should -Be 1
+    }
+  }
+
+  Context 'folder protection and dependencies' {
+    BeforeEach {
+      # A host with access control lists, run as SYSTEM, whose stand-in file system protects what
+      #   the run creates; a path registered in $script:Acl carries those rules instead.
+      $script:Acl = @{}
+      $script:Protected = [System.Collections.Generic.List[PSCustomObject]]::new()
+      $script:ScriptPath = Join-Path -Path $TestDrive -ChildPath 'bin/Invoke-WsusMaintenance.ps1'
+      Mock -CommandName Test-MaintenanceAclSupport -MockWith { $True }
+      Mock -CommandName Get-MaintenanceIdentitySid -MockWith { 'S-1-5-18' }
+      Mock -CommandName Get-MaintenanceScriptPath -MockWith { $script:ScriptPath }
+      Mock -CommandName Get-MaintenancePathAccess -MockWith { $script:Acl[$Path] }
+      Mock -CommandName New-MaintenanceProtectedFolder -MockWith {
+        $Null = [System.IO.Directory]::CreateDirectory($Path)
+        $script:Protected.Add([PSCustomObject]@{ Path = $Path; Identity = ($Identity -join ',') })
+      }
+
+      Function script:Open-Folder {
+        Param ([System.String]$Path)
+        $Null = New-Item -ItemType Directory -Path $Path -Force
+        $script:Acl[$Path] = [PSCustomObject]@{
+          OwnerSid  = 'S-1-5-32-544'
+          OwnerName = 'BUILTIN\Administrators'
+          Rules     = @([PSCustomObject]@{ Sid = 'S-1-5-32-545'; Name = 'BUILTIN\Users'; Rights = 0x116; Allow = $True })
+        }
+      }
+    }
+
+    It 'creates its folders protected, logs the dependency check and runs' {
+      $Result = Invoke-WsusMaintenance -ConfigPath (Join-Path -Path $script:FixtureRoot -ChildPath 'minimal-valid.json')
+
+      $Result.Status | Should -Be 'Success'
+      ForEach ($Configured In @($script:Logs, $script:Reports, $script:Summaries)) {
+        @($script:Protected | Where-Object -FilterScript { $PSItem.Path -eq (Get-OutputFolder -Configured $Configured) }) | Should -HaveCount 1
+      }
+      ($script:Protected | Where-Object -FilterScript { $PSItem.Path -eq (Get-OutputFolder -Configured 'H:\SUSDB') }).Identity | Should -Be 'S-1-5-18,S-1-5-32-544,NT SERVICE\MSSQLSERVER'
+      @($script:Protected.Identity | Select-Object -Unique) | Should -Contain 'S-1-5-18,S-1-5-32-544'
+      Should -Invoke -CommandName Get-MaintenancePathAccess -ParameterFilter { $Path -eq $script:ScriptPath } -Times 1 -Exactly
+      $Log = Get-Content -LiteralPath $Result.Run.Artifacts.Log -Raw
+      $Log | Should -Match 'Dependencies: the WSUS administration API \(Microsoft\.UpdateServices\.Administration\) present; the SQL Server client \(System\.Data\.SqlClient\) present; the IIS configuration \(applicationHost\.config\) present\.'
+    }
+
+    It 'stops with PreconditionFailed, before taking the lock, when the report folder can be changed by standard users' {
+      $Path = New-ConfigurationFile -Json '{ "schemaVersion": 1, "backup": { "destination": "H:\\SUSDB" }, "report": { "folder": "E:\\Reports" } }'
+      Open-Folder -Path (Get-OutputFolder -Configured 'E:\Reports')
+      Mock -CommandName Invoke-MaintenanceRun -MockWith { Throw 'Must not run.' }
+
+      { Invoke-WsusMaintenance -ConfigPath $Path } | Should -Throw -ErrorId 'PreconditionFailed,New-ErrorRecord' -ExpectedMessage "A data folder can be changed by principals other than SYSTEM, Administrators and the run identity, so the run does not use it: the report folder '*E_Reports': it can be changed by BUILTIN\Users*"
+
+      Should -Invoke -CommandName New-MaintenanceLock -Times 0 -Exactly
+      @(Get-ChildItem -LiteralPath (Get-OutputFolder -Configured 'E:\Reports') -Force) | Should -HaveCount 0
+      $Report = Get-Content -LiteralPath (Get-Artifact -Configured $script:Reports -Extension 'txt') -Raw
+      $Report | Should -Match 'Point reached : data folder protection check'
+      $script:Events.EventId | Should -Be @(1200)
+    }
+
+    It 'uses such a folder, with a warning, when run.permissiveFolderOverride is set' {
+      $Path = New-ConfigurationFile -Json '{ "schemaVersion": 1, "run": { "permissiveFolderOverride": true }, "backup": { "destination": "H:\\SUSDB" }, "report": { "folder": "E:\\Reports" } }'
+      Open-Folder -Path (Get-OutputFolder -Configured 'E:\Reports')
+
+      $Result = Invoke-WsusMaintenance -ConfigPath $Path
+
+      $Result.Status | Should -Be 'Warning'
+      $Result.Notices[0].Message | Should -BeLike "The folder '*E_Reports' can be changed by BUILTIN\Users*; it is used because run.permissiveFolderOverride is set."
+      $Result.Run.Artifacts.Reports[0] | Should -Be (Get-Artifact -Configured 'E:\Reports' -Extension 'txt')
+    }
+
+    It 'refuses to run from a folder that standard users can change' {
+      Open-Folder -Path (Split-Path -Path $script:ScriptPath -Parent)
+
+      { Invoke-WsusMaintenance -ConfigPath (Join-Path -Path $script:FixtureRoot -ChildPath 'minimal-valid.json') } |
+        Should -Throw -ErrorId 'PreconditionFailed,New-ErrorRecord' -ExpectedMessage "The script runs from '*Invoke-WsusMaintenance.ps1', which BUILTIN\Users can change; the run does not execute code that other principals can modify."
+
+      Should -Invoke -CommandName New-MaintenanceLock -Times 0 -Exactly
+      (Get-Content -LiteralPath (Get-Artifact -Configured $script:Reports -Extension 'txt') -Raw) | Should -Match 'Point reached : installation protection check'
+    }
+
+    It 'stops when the protection of the script cannot be checked' {
+      Mock -CommandName Get-MaintenancePathAccess -ParameterFilter { $Path -eq $script:ScriptPath } -MockWith { Throw 'Attempted to perform an unauthorized operation.' }
+
+      { Invoke-WsusMaintenance -ConfigPath (Join-Path -Path $script:FixtureRoot -ChildPath 'minimal-valid.json') } |
+        Should -Throw -ErrorId 'PreconditionFailed,New-ErrorRecord' -ExpectedMessage "The protection of the script at '*' could not be checked: Attempted to perform an unauthorized operation."
+    }
+
+    It 'skips IIS log retention as unavailable, with a warning, when the IIS configuration is missing' {
+      Mock -CommandName Test-MaintenanceDependencyPresent -ParameterFilter { $Name -eq 'IisConfiguration' } -MockWith { $False }
+
+      $Result = Invoke-WsusMaintenance -ConfigPath (Join-Path -Path $script:FixtureRoot -ChildPath 'minimal-valid.json')
+
+      $Result.ExitCode | Should -Be 2
+      ($Result.Stages | Where-Object -FilterScript { $PSItem.Name -eq 'IisLogRetention' }).Reason | Should -Be 'unavailable: missing the IIS configuration (applicationHost.config)'
+      $Result.Notices[0].Message | Should -BeLike 'Stage IisLogRetention is unavailable because the IIS configuration (applicationHost.config) is missing on this server*'
+    }
+
+    It 'stops with PreconditionFailed at the dependency check when the WSUS administration API is missing' {
+      Mock -CommandName Test-MaintenanceDependencyPresent -ParameterFilter { $Name -eq 'WsusApi' } -MockWith { $False }
+
+      { Invoke-WsusMaintenance -ConfigPath (Join-Path -Path $script:FixtureRoot -ChildPath 'minimal-valid.json') } |
+        Should -Throw -ErrorId 'PreconditionFailed,New-ErrorRecord' -ExpectedMessage 'A component the whole run needs is missing on this server: the WSUS administration API (Microsoft.UpdateServices.Administration).'
+
+      Should -Invoke -CommandName Get-WsusUpdateServer -Times 0 -Exactly
+      $script:Lock.Disposed | Should -Be 1
     }
   }
 
@@ -477,7 +648,7 @@ Describe 'Invoke-WsusMaintenance' {
       Set-Content -LiteralPath (Get-OutputFolder -Configured 'L:\Logs') -Value 'a file, not a folder'
       $Path = New-ConfigurationFile -Json '{ "schemaVersion": 1, "backup": { "destination": "H:\\B" }, "log": { "folder": "L:\\Logs" } }'
 
-      { Invoke-WsusMaintenance -ConfigPath $Path } | Should -Throw -ErrorId 'PreconditionFailed,New-ErrorRecord' -ExpectedMessage "The log folder '*' cannot be written: *"
+      { Invoke-WsusMaintenance -ConfigPath $Path } | Should -Throw -ErrorId 'PreconditionFailed,New-ErrorRecord' -ExpectedMessage "The log folder '*' cannot be used: *"
 
       Should -Invoke -CommandName Test-MaintenanceElevation -Times 0 -Exactly
       $script:Events.EventId | Should -Be @(1200)
@@ -545,7 +716,7 @@ Describe 'Invoke-WsusMaintenance' {
       Mock -CommandName Invoke-MaintenanceRun -MockWith { Throw 'Unexpected failure.' }
 
       { Invoke-WsusMaintenance -ConfigPath (Join-Path -Path $script:FixtureRoot -ChildPath 'minimal-valid.json') } |
-        Should -Throw -ExpectedMessage 'Unexpected failure.'
+        Should -Throw -ErrorId 'StageError,New-ErrorRecord' -ExpectedMessage 'An unexpected error stopped the run: Unexpected failure.'
       $script:Lock.Disposed | Should -Be 1
     }
   }

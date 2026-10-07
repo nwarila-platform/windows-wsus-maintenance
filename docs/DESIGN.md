@@ -9,8 +9,8 @@ repository itself.
 The decided behaviour and defaults are stated here and in the repository's architecture decision
 records ([decision-records](decision-records/README.md)).
 
-Status date: 2026-10-07 (M0 to M9 complete; run control reworked for one nightly run of every
-stage).
+Status date: 2026-10-07 (M0 to M10 complete: release one is built and its gate is green; what
+only a live server can prove is listed in section 12, by the lane that will prove it).
 
 ---
 
@@ -99,7 +99,7 @@ The organisation PowerShell style guide (rules SG-1 to SG-8 in `NWarila/powershe
 
 Windows-only types and commands are confined to small seam functions, so that the whole suite
 runs under PowerShell on Linux as well as Windows PowerShell 5.1. Tests mock the seams with
-Pester `Mock`. The seams, delivered and planned:
+Pester `Mock`. The seams:
 
 | Seam | Wraps |
 |---|---|
@@ -120,7 +120,12 @@ Pester `Mock`. The seams, delivered and planned:
 | `Get-MaintenanceRegistryKey` (M9) | `Microsoft.Win32.RegistryKey` in the 64-bit or 32-bit view, read only: strong cryptography and HTTP.sys certificate bindings |
 | `Get-MaintenanceCertificate` (M9) | `X509Store` of the local machine, read only |
 | `Get-MaintenanceMachineInfo` (M9) | `Win32_ComputerSystem`: manufacturer, model and logical processors |
-| ACL readers | Folder-protection checks (M10) |
+| `Test-MaintenanceAclSupport` (M10) | Whether the host has Windows access control lists, so folder protection can be exercised with stand-ins on any platform |
+| `Get-MaintenanceIdentitySid` (M10) | The security identifier of the run identity |
+| `Get-MaintenancePathAccess` (M10) | `Get-Acl`: the owner and every access rule of a file or folder, read only |
+| `New-MaintenanceProtectedFolder` (M10) | Creation of one folder together with its protected access control list (`Directory.CreateDirectory` with a `DirectorySecurity` on Windows PowerShell, `FileSystemAclExtensions.Create` on PowerShell 7) |
+| `Get-MaintenanceScriptPath` (M10) | The path of the running script, for the installation check |
+| `Test-MaintenanceDependencyPresent` (M10) | Whether a component is installed: the WSUS administration assembly, the SQL Server client, the IIS configuration |
 
 Lessons already learned in this code base:
 
@@ -157,6 +162,13 @@ Lessons already learned in this code base:
   `$null` in an expression instead of an error, so code checks `Exists` first.
 - `Sort-Object` compares strings by culture, which orders `-` and `_` differently on different
   platforms; tests that compare file lists sort them ordinally.
+- Under `Set-StrictMode -Version 3.0` an index past the end of an array is an error, not `$null`,
+  so code checks the length of a `-split` result before reading an optional part.
+- `powershell.exe -File` passes each argument as one literal string, so a list such as
+  `-Stage Backup,Reindex` arrives as one value, and a `[ValidateSet()]` failure exits 1 before the
+  script runs. Options therefore take comma-separated lists and are validated by the script.
+- A directory's last write time changes when a file is created or deleted in it, which lets a
+  test prove that nothing was written to a folder, a probe included.
 
 ### 3.4 Quality gates, release and provenance
 
@@ -170,9 +182,12 @@ Lessons already learned in this code base:
   script against a real, unsynchronized top-tier SUSDB (milestone M11).
 - **Release** (`.github/workflows/release.yaml`, tags `v*`): a module-free sealed build, then
   analyze, test and smoke run against the sealed copy. Only then is the GitHub Release published,
-  bound to the sealed digest, carrying the script, its `.sha256` sidecar and signed build
-  provenance. `docs/reference/maintenance.schema.json` and `docs/reference/summary.schema.json`
-  join the release assets in M10.
+  bound to the sealed digest, carrying the script, its `.sha256` sidecar,
+  `maintenance.schema.json` and `summary.schema.json` (copied unchanged from `docs/reference/`)
+  and signed build provenance whose subjects cover the script and both schemas; the release job
+  checks every asset against the sealed subjects before publishing
+  ([repo/0009](decision-records/repo/0009-release-assets-and-schemas.md)). No release has been
+  tagged yet.
 - **Versioning**: release-please, starting from version `0.0.0`.
 
 ### 3.5 Consumption by windows-wsus
@@ -211,9 +226,9 @@ Paths:
 
 | Item | Location |
 |---|---|
-| Installed script | `C:\ProgramData\NWarila\bin\Invoke-WsusMaintenance.ps1`, under a protected ACL |
+| Installed script | `C:\ProgramData\NWarila\bin\Invoke-WsusMaintenance.ps1`, under a protected ACL; the script refuses to run from a location that principals other than SYSTEM, Administrators and the run identity can change |
 | Configuration document | `C:\ProgramData\NWarila\WsusMaintenance\maintenance.json` (the script's fixed default) |
-| Data folders | Configuration values; the role points them at a subdirectory of the IIS log volume |
+| Data folders | Configuration values; the role points them at a subdirectory of the IIS log volume. A folder the run creates is protected; an existing one that others can change is refused unless `run.permissiveFolderOverride` is set ([repo/0007](decision-records/repo/0007-protected-folders-and-runtime-integrity.md)) |
 
 ## 4. Command line, exit codes, status and events
 
@@ -222,31 +237,41 @@ Paths:
 | Parameter | Meaning |
 |---|---|
 | `-ConfigPath` | Configuration document. Defaults to `%ProgramData%\NWarila\WsusMaintenance\maintenance.json`. |
-| `-Stage` | Run only the listed stages, still in catalogue order; without it every enabled stage runs. Names are matched without regard to case and recorded in their canonical spelling. This is how a hierarchy runs declines and cleanup separately (REQ-043). The onboarding profile is deferred. |
+| `-Stage` | Run only the listed stages, still in catalogue order; without it every enabled stage runs. Names are matched without regard to case and recorded in their canonical spelling, and may be given as one comma-separated value, as `powershell.exe -File` passes them. This is how a hierarchy runs declines and cleanup separately (REQ-043). The onboarding profile is deferred. |
 | `-DryRun` | Simulate: every stage applies its selection logic and reports what it would change; SUSDB receives only reads. |
 | `-RemoveCustomIndexes` | Drop the custom indexes this script created, and only those, instead of creating missing ones. Runs the `CustomIndexes` stage alone unless `-Stage` is given, which must then include `CustomIndexes`. |
-| `-ReportFolder`, `-ReportFormat` | One-run report destination and formats. |
+| `-ReportFolder`, `-ReportFormat` | One-run report destination and formats; formats may be one comma-separated value. |
 | `-Verbosity` | One-run log verbosity. |
 | `-ValidateOnly` | Validate the configuration and the options, then stop. |
 
-Every override in effect is recorded (REQ-083). An unknown or repeated stage name is a
-configuration error, reported together with any configuration-document errors.
+Every override in effect is recorded (REQ-083). Option values are matched without regard to case.
+An unknown or repeated stage name, and an unknown format or verbosity, is a configuration error,
+reported together with any configuration-document errors (exit code 4).
 
 Order of a run (M2):
 
 1. Read and validate the configuration document and the options; with `-ValidateOnly`, stop here
    without writing any file or event.
 2. Open the run: a new run identifier, the run log, and the report and summary folders (falling
-   back to the built-in defaults with a warning). An invalid configuration still names its
-   output settings where it validly can (section 4.5). A log that cannot be written stops the
+   back to the built-in defaults with a warning). A missing folder is created protected, and an
+   existing one that others can change is not written to (section 4.5). An invalid configuration
+   still names its output settings where it validly can. A log that cannot be written stops the
    run with `PreconditionFailed`.
 3. With an invalid configuration, stop with `ConfigurationInvalid`.
 4. Check elevation (administrator or LocalSystem); otherwise stop with `PreconditionFailed`.
+   Then check folder protection (REQ-092): a report or summary folder refused in step 2, or a
+   script file or folder that principals other than SYSTEM, Administrators and the run identity
+   can change, stops the run with `PreconditionFailed`
+   ([repo/0007](decision-records/repo/0007-protected-folders-and-runtime-integrity.md)).
 5. Take the system-wide lock `Global\Invoke-WsusMaintenance`; when another run holds it, log
    that and stop at once with `LockHeld`. A lock left by a crashed run is abandoned by the
    operating system and taken over.
 6. Discover the environment (section 5.1): the operating system and where SUSDB lives. An
-   unsupported combination stops the run with `PreconditionFailed` and names it.
+   unsupported combination stops the run with `PreconditionFailed` and names it. Then check the
+   dependencies (REQ-093) and log the result: a missing component the whole run needs (the WSUS
+   administration API, the SQL Server client) stops the run with `PreconditionFailed`; a missing
+   IIS configuration makes IIS log retention unavailable, unless `iisLogs.folder` names the
+   folder.
 7. Connect to the WSUS administration interface and to SUSDB (REQ-053); a failed connection
    stops the run with `PreconditionFailed`. Detect the server tier (REQ-052).
 8. Check the database permissions of every stage (REQ-025); a stage that lacks one is skipped
@@ -254,7 +279,7 @@ Order of a run (M2):
 9. Run the synchronization guard (REQ-044); a synchronization that will not stop stops the run
    with `PreconditionFailed`, after restoring what the guard changed.
 10. Write the run-started event, build the stage plan (every enabled stage, or the `-Stage` list,
-    in catalogue order, gated by tier and permissions) and run each stage in its own error
+    in catalogue order, gated by tier, permissions and missing components) and run each stage in its own error
     boundary within the time budget. Before the first stage that deletes or alters SUSDB content,
     the backup gate is evaluated once (section 10, M5). A stage the budget stops from starting is
     reported as `NotRun` with a warning and runs on the next night.
@@ -263,18 +288,25 @@ Order of a run (M2):
 12. Save the report and the summary, log the notices, and write a stage-error event per failed
     stage and the completion event.
 
-Steps 2 to 9 change nothing on the server except stopping a running synchronization (and, when
-configured, suspending its schedule), which step 11 undoes. Each stop in steps 2 to 9, except
-`LockHeld`, first saves a failure report and summary and writes its event (REQ-069).
+Steps 2 to 9 change nothing on the server except creating missing data folders and stopping a
+running synchronization (and, when configured, suspending its schedule), which step 11 undoes.
+Each stop in steps 2 to 9, except `LockHeld`, first saves a failure report and summary and writes
+its event (REQ-069).
+
+An unexpected error anywhere after step 2 (REQ-098) is caught at the top: step 11 still runs, and
+the run saves a failure report and summary with the failure kind `StageError` and the point it
+reached, writes the run-failed event and exits with `StageError` (1). An error before the run log
+exists exits 1 through the entry point's trap, with nothing changed and no report
+([repo/0008](decision-records/repo/0008-failure-handling-and-rerun-safety.md)).
 
 ### 4.2 Exit codes (fixed)
 
 | Code | Member | Meaning |
 |---|---|---|
 | 0 | `Success` | Completed, nothing to report above information. |
-| 1 | `StageError` | One or more stage errors. Also every unhandled failure: nothing unexpected exits 0. |
+| 1 | `StageError` | One or more stage errors. Also every unexpected failure, with a failure report once the run log is open: nothing unexpected exits 0. |
 | 2 | `CompletedWithWarnings` | Completed with warnings. |
-| 3 | `PreconditionFailed` | Aborted on a precondition: elevation, connectivity, synchronization guard, unsupported combination, permissions, log folder. |
+| 3 | `PreconditionFailed` | Aborted on a precondition: log folder, elevation, data folder or script protection, lock, unsupported combination, missing component, connectivity, synchronization guard. |
 | 4 | `ConfigurationInvalid` | Invalid configuration document or options. |
 | 5 | `LockHeld` | Another run holds the lock. |
 | 6 | `DeliveryFailed` | Reserved for the delivery test once mail delivery exists. |
@@ -298,9 +330,9 @@ registers the source; the script never registers it. The identifiers are configu
 | Run started | 1000 | Information | Once every precondition has passed, before the first stage |
 | Run completed: success | 1001 | Information | Last, for a run that completed |
 | Run completed: warning | 1002 | Warning | Last, for a run that completed |
-| Run completed: error | 1003 | Error | Last, for a run that completed |
+| Run completed: error | 1003 | Error | Last, for a run that completed, or for a run an unexpected error stopped |
 | Each stage error | 1100 | Error | After the stages, one per failed stage |
-| Precondition failure | 1200 | Error | Instead of the events above, for a log, elevation, lock, environment, connection or synchronization-guard failure |
+| Precondition failure | 1200 | Error | Instead of the events above, for a log, elevation, folder-protection, installation, lock, environment, dependency, connection or synchronization-guard failure |
 | Invalid configuration | 1300 | Error | Instead of the events above |
 | Late content | 1400 | Warning | During deferred approval, once per run that approves updates whose files are not yet local, naming each |
 
@@ -327,6 +359,14 @@ Each run other than `-ValidateOnly` produces, under its run identifier
 - **Folder fallback.** A report or summary folder that cannot be written falls back to the
   built-in default with a Warning notice in the report; when the default fails too, that file is
   not saved and the notice says so. A log folder that cannot be written stops the run (REQ-071).
+- **Folder protection** (REQ-092). Every folder the run creates (log, report, summary and backup,
+  and each missing level above them) is created with inheritance off and full control for
+  SYSTEM, Administrators and the run identity only (and the SQL Server service account for the
+  backup folder), and its access control list is read back and verified. An existing folder is
+  never changed; one whose owner or allow rules let another principal change it is not written
+  to: a log folder stops the run at step 2, a report or summary folder falls back for the failure
+  report and stops the run at step 4, and a backup folder fails the backup stage, which closes the
+  backup gate. `run.permissiveFolderOverride` uses such folders with a Warning notice each run.
 - **Broken configuration.** When the document is missing, unreadable or invalid, each output
   setting it states validly is still used and every other setting takes its built-in default,
   so the failure report reaches a known folder (REQ-069).
@@ -479,7 +519,7 @@ One JSON document validated before anything changes
 
 | Area | Defaults |
 |---|---|
-| Run | Budget 240 min. Database command timeout none. Connection timeout 30 s. Progress logged per item. Dry run off. |
+| Run | Budget 240 min. Database command timeout none. Connection timeout 30 s. Progress logged per item. Dry run off. Data folders that others can change are refused (`run.permissiveFolderOverride` off). |
 | Sync guard | Poll 10 s. Wait 600 s per attempt. 60 s between attempts. 3 attempts. Schedule not suspended. |
 | Schedule | One run per night, started by the task: role default 01:00 local on downstream servers and 03:00 local on a top-tier server, overridable per deployment. Every enabled stage runs on every run; no tiers, calendar or catch-up ([repo/0006](decision-records/repo/0006-nightly-run-of-every-stage.md)). |
 | Backup | Native, with checksum. Compression automatic. One backup per day; a same-day backup replaces the earlier one. Keep the 7 most recent; delete files older than 7 days outside them. Free-space margin 20%. Gate required. Freshness 24 h. Destination on the dedicated backup volume. |
@@ -508,6 +548,12 @@ Notes on scope:
   parameters of deferred features are added with their milestones.
 - Lifecycle automation (section 11) extends the scope beyond the specification, which lists
   update approval as out of scope; it is part of release one as milestone M8.
+- REQ-092: release one's data folders are the log, report, summary and backup folders; the digest
+  queue, pending-deletion list and secrets folders the requirement also names do not exist in
+  release one.
+- REQ-093: the components checked are the ones release one calls (section 4.1, step 6).
+- REQ-096: release one sends no mail, so no report can be delivered twice, and keeps no
+  deferred-deletion list; the other properties hold as built (section 10, M10).
 
 ## 10. Milestones and status
 
@@ -523,10 +569,12 @@ Notes on scope:
 | M7 | Decline engine | 004, 010–016 | **Done** (gate green, 2026-10-07) |
 | M8 | Lifecycle automation: needed-update approval with per-group delays and deadlines, content pre-staging, late-content warning, exclusions, licences | LCA-01 to LCA-09 (section 11) | **Done** (gate green, 2026-10-07) |
 | M9 | Housekeeping and health | 030–032, 067 | **Done** (gate green, 2026-10-07) |
-| M10 | Hardening and release readiness: folder protection, dependency check, interruption tests, ADRs, schema release assets | 048, 092, 093, 096, 098 | Planned |
-| M11 | Runner lane: SQL Server Express and WSUS on the hosted Windows runner (spike first) | live evidence | Planned |
+| M10 | Hardening and release readiness: folder protection, dependency check, interruption tests, ADRs, schema release assets | 048, 092, 093, 096, 098 | **Done** (gate green, 2026-10-07) |
+| M11 | Runner lane: SQL Server Express and WSUS on the hosted Windows runner (spike first) | live evidence (section 12, lane A) | Planned |
 
-Each milestone ends with the local gate green.
+Each milestone ends with the local gate green. M0 to M10 are release one as built; M11 and the
+`windows-wsus` integration pieces I1 to I5 (section 3.5) produce the live evidence that section 12
+lists. No release has been tagged.
 
 What M0 and M1 delivered:
 
@@ -536,17 +584,17 @@ What M0 and M1 delivered:
   `Get-MaintenanceDocumentValue`, the validators (`Test-MaintenanceConfiguration` and helpers),
   `ConvertTo-MaintenanceEffectiveConfiguration`, `Resolve-MaintenanceOverride`,
   `ConvertTo-MaintenanceConfigurationSchema`, and the orchestrator with `-ValidateOnly`.
-- **Run behaviour today.** A run without `-ValidateOnly` validates and completes with no stages
-  until M2.
+- **Run behaviour at the time.** A run without `-ValidateOnly` validated and completed with no
+  stages; M2 added the run itself.
 
 What M2 delivered: `Get-MaintenanceTime`, `Test-MaintenanceElevation`, `New-MaintenanceLock`,
 `Enter-MaintenanceLock`, `Exit-MaintenanceLock`, `Resolve-MaintenancePath`,
 `Test-MaintenanceStageEnabled`, `Get-MaintenanceStagePlan`, `Get-MaintenanceStageHandler`,
 `Invoke-MaintenanceStage`, `New-MaintenanceStageOutcome`, `New-MaintenanceNotice`,
 `Test-MaintenanceBudget`, `Resolve-MaintenanceRunStatus`, `Invoke-MaintenanceRun`, and the
-orchestrator wiring. A run now validates, checks elevation, takes the lock, plans every enabled
-stage, and records each as "not available in this release" until the stage milestones register
-handlers. The first M2 build also had a tier calendar with a run-state file; the move to one nightly
+orchestrator wiring. From then on a run validated, checked elevation, took the lock, planned every
+enabled stage, and recorded each as "not available in this release" until the stage milestones
+registered handlers (every stage has one since M9). The first M2 build also had a tier calendar with a run-state file; the move to one nightly
 run of every stage removed it
 ([repo/0006](decision-records/repo/0006-nightly-run-of-every-stage.md)).
 
@@ -595,7 +643,8 @@ What M5 delivered: the stage functions `Backup-Susdb`, `Set-SusdbCustomIndex`,
   `Replace` and `NOINIT` when it is `Append`, under the backup-set name
   `<database> full backup <date> <time>`. Compression follows `backup.compression`: `Auto`
   compresses on the Enterprise, Standard and Developer editions, which support it ([backup
-  compression][compression]), and not otherwise. The folder is created when missing. Before the
+  compression][compression]), and not otherwise. The folder is created when missing (protected,
+  since M10). Before the
   backup, its size is estimated from the database's reserved pages (`sys.dm_db_partition_stats`),
   and the destination must have that much free space plus `backup.freeSpaceMarginPercent`;
   otherwise the backup is skipped with a High notice. When the free space cannot be read, the
@@ -616,7 +665,8 @@ What M5 delivered: the stage functions `Backup-Susdb`, `Set-SusdbCustomIndex`,
   `dbo.tbLocalizedPropertyForRevision (LocalizedPropertyID)`, `nclSupercededUpdateID` on
   `dbo.tbRevisionSupersedesUpdate (SupersededUpdateID)` ([guide], "Create custom indexes") and
   each `customIndexes.additional` entry. A missing index is created as a non-clustered index and
-  tagged with the extended property `CreatedBy = Invoke-WsusMaintenance`; an existing one is
+  tagged with the extended property `CreatedBy = Invoke-WsusMaintenance` (since M10, both in one
+  transaction); an existing one is
   reported as already present and left alone. With `-RemoveCustomIndexes` only tagged indexes are
   dropped; an untagged index of the same name is kept and reported. A failure is a Warning notice
   per index.
@@ -947,7 +997,82 @@ server with no notice; each misconfiguration raising exactly its own notice; poo
 defaults; per-deployment download expectations; disabled checks; a failing check; and the
 unreadable IIS configuration and missing site.
 
-Notes for M10 onwards:
+What M10 delivered: folder protection (`Test-MaintenancePathProtection`,
+`Get-MaintenanceTrustedSid`, `Test-MaintenanceInstallation`, `ConvertTo-MaintenanceAccountName`,
+`ConvertTo-SqlServiceAccount`, and protection in `Initialize-MaintenanceFolder`,
+`Resolve-MaintenanceOutputFolder`, `New-MaintenanceLog`, `Open-MaintenanceRunOutput` and
+`Backup-Susdb`); the dependency check (`Test-MaintenanceDependency`) and unavailable stages in the
+plan; the top-level handling of unexpected errors; option handling for `powershell.exe -File`
+(`ConvertTo-MaintenanceList`, `ConvertTo-MaintenanceCanonicalValue`); the seams listed in section
+3.3; the schemas as release assets; and the decision records
+[repo/0007](decision-records/repo/0007-protected-folders-and-runtime-integrity.md) to
+[repo/0010](decision-records/repo/0010-destructive-actions-opt-in.md). The behaviour:
+
+- **Folder protection** (REQ-092, section 4.5). Every folder the run creates, and every missing
+  level above it, is created in one step with a protected access control list for SYSTEM,
+  Administrators and the run identity (and, for the backup folder, the SQL Server per-service
+  account, `NT SERVICE\MSSQLSERVER` or `NT SERVICE\MSSQL$<instance>`, which writes the file), and
+  read back. An existing folder is never changed. A principal outside the trusted set counts as
+  able to change a file or folder when it is the owner or when an allow rule, inherited or not,
+  gives it write data, append data, write attributes or extended attributes, delete, delete child
+  items, change permissions, take ownership, or generic write or all; service identities
+  (`S-1-5-80-`), `CREATOR OWNER` and `OWNER RIGHTS` are trusted. A refused folder is never written
+  to (not even the write probe). `run.permissiveFolderOverride`, which M1 added to the catalogue,
+  now takes effect: such folders are used with a Warning notice.
+- **Installation check** (REQ-093). After the elevation check, the folder of the running script
+  and the script file are checked the same way; a writer outside the trusted set, or an access
+  control list that cannot be read, stops the run with `PreconditionFailed` at "installation
+  protection check". There is no override.
+- **Dependency check** (REQ-093). After environment discovery the run logs one line naming each
+  component and whether it is present: the WSUS administration API, the SQL Server client and the
+  IIS configuration. The first two are needed by the whole run, so a missing one stops it with
+  `PreconditionFailed` at "dependency check"; a missing IIS configuration makes `IisLogRetention`
+  unavailable (unless `iisLogs.folder` is set): the plan skips it with "unavailable: missing the
+  IIS configuration (applicationHost.config)" and the run raises one Warning notice. A test of the
+  source refuses any command or API that downloads, installs, changes file trust or loads code
+  from a file, and any write to the script's own path.
+- **Unexpected errors** (REQ-098). The run body after opening the outputs is wrapped: an error
+  that is not one of the coded stops is turned into `Stop-MaintenanceRun` with `StageError`, after
+  the inner `Finally` has restarted the synchronization (recording what it did in the report
+  header), closed the connection and released the lock. The run tracks the point it reached
+  (for example "stage run" or "saving of the report and summary") for the failure report. The
+  summary's failure kind gains `StageError`, and its event is the run-failed event (1003).
+- **Re-run safety** (REQ-096). The custom index and its tag are created in one batch under
+  `SET XACT_ABORT ON` and one transaction, so an interrupted run never leaves an untagged index
+  that the removal action would not recognise. Every other change was already one atomic call or
+  statement ([repo/0008](decision-records/repo/0008-failure-handling-and-rerun-safety.md)).
+  Reports are written per run identifier, so a rerun never repeats a delivery (release one sends
+  no mail), and release one keeps no deferred-deletion list.
+- **Time budget** (REQ-048). Unchanged since M2 and M5: no stage starts after the deadline,
+  item-by-item stages stop at their next item boundary, the synchronization restart and the
+  report still happen, and the stages that did not run are listed with a Warning notice.
+- **Options under `powershell.exe -File`**, which passes each argument as one literal string:
+  `-Stage` and `-ReportFormat` accept comma-separated lists, option values are matched without
+  regard to case, and an unknown `-ReportFormat` or `-Verbosity` value is a configuration error
+  (exit code 4) instead of a parameter-binding failure (exit code 1).
+- **Release assets.** The release workflow copies both schemas next to the sealed script, adds
+  them to the provenance subjects and publishes them with the release; the release job checks them
+  against those subjects first ([repo/0009](decision-records/repo/0009-release-assets-and-schemas.md)).
+
+The gate proves: the trusted and untrusted principals and each write right; protected creation of
+every missing level with the granted identities; a refused folder left untouched and unwritten;
+the override with its warning; a created folder that does not verify; the report folder refused
+with the failure report in the default folder and no lock taken; the log folder refused; the
+backup folder created with the SQL Server account, refused, and overridden; the installation
+check for the folder, the file and an unreadable access control list; on Windows, a protected
+folder created and read back with exactly the granted identities; the dependency summary, a
+blocking component, an unavailable stage and a check that fails; the source free of download,
+install, trust and code-loading calls; an unexpected failure in the stage run, before the stages
+and while saving the outputs, each with its failure report, its point, the synchronization
+restarted, the lock released, the run-failed event and `StageError`, and a coded stop that keeps
+its own code; interrupted runs of obsolete-update deletion, superseded declines, declined-update
+deletion, deferred approval, stale-computer removal, sync-history cleanup and IIS log retention,
+each finished by the next run with nothing done twice, a custom index left by an interrupted run,
+and a partial backup file replaced; the release workflow's schema assets; and the `-ValidateOnly`
+exit codes of the smoke script (0, 2 and 4 for the fixtures, and 0 or 4 for stage lists, the
+index removal, report formats, verbosity and a relative report folder).
+
+Notes for maintainers:
 
 - **Stage handlers.** Every stage of the catalogue has a handler in `Get-MaintenanceStageHandler`.
   A handler is a script block with one `-Context` parameter (`StageName`, `DryRun`,
@@ -966,9 +1091,13 @@ Notes for M10 onwards:
   stages, declined-update deletion and stale-computer moves are skipped with "skipped: replica",
   and with an unknown tier with "skipped: server role unknown".
 - **Run result.** Configuration failures throw `ConfigurationInvalid` with the full validation
-  summary as `TargetObject`; precondition failures throw `PreconditionFailed` or `LockHeld`. A
-  completed run returns `WsusMaintenance.RunResult` with `Stages` (18 outcomes), `Notices`, `Run`
-  and `Validation`.
+  summary as `TargetObject`; precondition failures throw `PreconditionFailed` or `LockHeld`; an
+  unexpected error throws `StageError` after its failure report. A completed run returns
+  `WsusMaintenance.RunResult` with `Stages` (18 outcomes), `Notices`, `Run` and `Validation`.
+- **Seams in tests.** Tests that do not exercise folder protection replace
+  `Test-MaintenanceAclSupport` with `$False`, and the run-level tests replace
+  `Test-MaintenanceDependencyPresent` with `$True`, so that the suite behaves the same on Windows
+  and elsewhere.
 
 ## 11. Lifecycle automation
 
@@ -1054,55 +1183,111 @@ checks compare the download settings with the per-deployment values in `health.d
 
 ## 12. Open items and risks
 
-- **Live measurements still owed** on a real server:
-  - who owns SUSDB, and SYSTEM's SQL login on the image;
-  - which cleanup and delete operations a replica accepts;
-  - the WSUS API over HTTPS under SYSTEM: whether the local `GetUpdateServer()` connects when
-    the API web service requires TLS, or `discovery.wsusHostName` and `discovery.wsusUseTls` must
-    be set;
-  - that `HAS_PERMS_BY_NAME` reports the stage permissions as expected for SYSTEM as database
-    owner;
-  - that `dbo.tbEventInstance` has the `TimeAtServer` column and that it holds UTC times;
-  - that SYSTEM can read `msdb.dbo.backupset` for the backup gate, and that the SQL Server service
-    account can create and write the backup files in the destination folder;
-  - that `SERVERPROPERTY('Edition')` begins with the edition name the compression choice reads;
-  - the text `OBJECT_DEFINITION` returns for `dbo.spDeleteUpdate` on each supported WSUS version
-    (leading comments, header, declaration spacing), before and after the fix;
-  - that `sys.sp_addextendedproperty` tags the custom indexes as expected;
-  - which SUSDB operations and built-in cleanup options a replica refuses, and with what error;
-  - which exceptions a built-in cleanup time-out raises through the administration API, so that
-    the retry test recognises them;
-  - that the per-update summaries report needed counts for updates that are not yet approved
-    (Microsoft's description of needed updates dates from approvals for detection), which the
-    candidate list of the approval stages relies on;
-  - the state an unapproved update reports and how quickly an approval for the empty staging
-    group starts its download on a downstream server with deferred downloads;
-  - whether an approval's deadline is accepted in UTC as documented, and how
-    `CanRequestUserInput` is set on updates that ask for input (Microsoft's property page carries a
-    copy of the restart description);
-  - whether `AcceptLicenseAgreement` succeeds for an update whose licence text is not yet
-    downloaded, before staging has fetched it;
-  - how a staging approval removal interacts with the built-in unneeded-content cleanup;
-  - that WSUS setup records `UsingSSL` (and `TargetDir`) in its registry key as the TLS and site
-    checks expect, and the names under which HTTP.sys registers the certificate of the WSUS TLS
-    port (`SslBindingInfo` or `SslSniBindingInfo`, `0.0.0.0:8531` or `[::]:8531`);
-  - the manufacturer and model strings of the hypervisors in use, for the virtual-machine test;
-  - the IIS log folder and file names of the WSUS website on each supported Windows Server
-    release, and whether the script runs as a 64-bit process (a 32-bit process would read the
-    redirected `applicationHost.config` path);
-  - how long `GetUpdates` takes over the undeclined updates of a large server, and the memory the
-    WsusPool application pool needs for it;
-  - that setting `PreferredCulture` to `en` returns English titles and category names on a server
-    whose display language differs, and that restoring the previous (possibly empty) value works;
-  - whether `CreationDate` and `ArrivalDate` arrive in UTC, as the age tests assume;
-  - that the approval states used for the evaluation scope leave out every declined update;
-  - which errors `DeleteUpdate` raises for a declined update that other updates still reference;
-  - whether `ComputerTargetScope.ToLastSyncTime` includes computers that never synchronized, and
-    that `GetComputerTargetCount` over the same scope counts the population the guard compares
-    against;
-  - how `AddComputerTarget` treats a stale computer that is already in other groups (the stage,
-    like Microsoft's sample, only adds it to the target group);
-  - the duration of each stage on a large SUSDB that has gone without maintenance.
+Release one is built and tested against stand-ins (section 3.3); what only a live server can show
+is listed here, once, under the lane that can prove it. Until an item is proven it is a known
+risk.
+
+### 12.1 Live evidence still owed
+
+**A. SQL Server Express runner lane (M11).** A hosted Windows runner with SQL Server Express and
+the WSUS role, an unsynchronized top-tier SUSDB, and the built script started by a scheduled task
+as SYSTEM:
+
+- that `HAS_PERMS_BY_NAME` reports the stage permissions as expected for SYSTEM as database owner,
+  and for a login that is not;
+- that `dbo.tbEventInstance` has the `TimeAtServer` column and that it holds UTC times;
+- that SYSTEM can read `msdb.dbo.backupset` for the backup gate;
+- that `SERVERPROPERTY('Edition')` begins with the edition name the compression choice reads
+  (Express: no compression);
+- the text `OBJECT_DEFINITION` returns for `dbo.spDeleteUpdate` on the WSUS version of the
+  runner's Windows Server release (leading comments, header, declaration spacing), before and
+  after the fix (lane B adds Windows Server 2022's);
+- that the custom indexes are created and tagged in one transaction (`SET XACT_ABORT ON`,
+  `sys.sp_addextendedproperty`) and that the removal action drops only those;
+- that a backup folder the run creates, protected for SYSTEM, Administrators and
+  `NT SERVICE\MSSQL$SQLEXPRESS`, lets the SQL Server service write the backup, and that a second
+  backup on the same day replaces the first;
+- that the folders the run creates carry exactly the protected access control list on NTFS, that
+  an existing folder with inherited `%ProgramData%` permissions is refused, and how the
+  installation check judges the folder the runner starts the script from;
+- that the dependency check finds the WSUS administration API, the SQL Server client and the IIS
+  configuration once the WSUS role is installed, and that the script runs as a 64-bit process (a
+  32-bit process would read a redirected `applicationHost.config` path);
+- that WSUS setup records `UsingSSL`, `TargetDir` and `SqlServerName` in its registry key as
+  discovery and the TLS and site checks expect, and the IIS site, log folder and application pool
+  WSUS setup creates;
+- that the local `AdminProxy.GetUpdateServer()` connects under SYSTEM, and that setting
+  `PreferredCulture` to `en` and restoring the previous (possibly empty) value works on an
+  English server;
+- that `spGetObsoleteUpdatesToCleanup`, each built-in cleanup option, the re-index statements and
+  `sp_updatestats` complete on a real SUSDB, and that a second run finds nothing to do;
+- the exit codes Task Scheduler records for a successful run, a stage error and a failed
+  precondition;
+- that terminating the task at several points of a run and then running it again leaves SUSDB
+  consistent and every stage succeeding (REQ-096).
+
+**B. `windows-wsus` replica proof (I4).** The replica the `windows-wsus` repository builds on every
+change: SQL Server 2022 Standard (default instance), Windows Server 2022, domain-joined, TLS, with
+reporting clients:
+
+- who owns SUSDB, and SYSTEM's SQL login on the image after I2;
+- which SUSDB operations and built-in cleanup options a replica accepts or refuses, and with what
+  error;
+- the WSUS API over HTTPS under SYSTEM: whether the local `GetUpdateServer()` connects when the
+  API web service requires TLS, or `discovery.wsusHostName` and `discovery.wsusUseTls` must be set;
+- that the SQL Server service account (`NT SERVICE\MSSQLSERVER`) writes the backup into the
+  protected folder I1 and I2 prepare, with compression on Standard;
+- the names under which HTTP.sys registers the certificate of the WSUS TLS port
+  (`SslBindingInfo` or `SslSniBindingInfo`, `0.0.0.0:8531` or `[::]:8531`), and the certificate
+  expiry check against it;
+- the manufacturer and model strings of the hypervisor, for the virtual-machine test;
+- the IIS log folder and file names of the WSUS website on Windows Server 2022;
+- whether `ComputerTargetScope.ToLastSyncTime` includes computers that never synchronized, that
+  `GetComputerTargetCount` over the same scope counts the population the stale-computer guard
+  compares against, and whether a replica accepts the deletion of a stale computer;
+- the event source registered by I3 and the events of a run, the scheduled task's exit codes,
+  replica gating, and a second run that finds nothing to do (I4);
+- the duration of each stage on a SUSDB of realistic size, and an interrupted run finished by the
+  next one on a live server.
+
+**C. Autonomous lifecycle variant (I5).** A dispatch-only build with `replica: false` against a
+test upstream, which gives the decline engine and the approval stages a server that may decline
+and approve; as planned it has no reporting clients, so the items marked "needs clients" stay open
+until clients are added to it:
+
+- how long `GetUpdates` takes over the undeclined updates, and the memory the WsusPool application
+  pool needs for it;
+- whether `CreationDate` and `ArrivalDate` arrive in UTC, as the age tests assume;
+- that the approval states used for the evaluation scope leave out every declined update;
+- that superseded and expired declines happen as selected and a repeat run declines nothing;
+- which errors `DeleteUpdate` raises for a declined update that other updates still reference;
+- which exceptions a built-in cleanup time-out raises through the administration API, so that
+  the retry test recognises them (seen only if a time-out occurs);
+- the state an unapproved update reports, and how quickly an approval for the empty staging
+  group starts its download on a downstream server with deferred downloads;
+- how a staging approval removal interacts with the built-in unneeded-content cleanup;
+- whether `AcceptLicenseAgreement` succeeds for an update whose licence text is not yet
+  downloaded, before staging has fetched it;
+- whether an approval's deadline is accepted in UTC as documented, and how `CanRequestUserInput`
+  is set on updates that ask for input (needs an update that asks for input);
+- that the per-update summaries report needed counts for updates that are not yet approved, which
+  the approval candidates rely on (needs clients);
+- how `AddComputerTarget` treats a stale computer that is already in other groups, for the `Move`
+  action (needs clients).
+
+**Not covered by any planned lane.** These stay open after A, B and C:
+
+- Windows Server 2019, and whichever of Windows Server 2022 and 2025 neither the runner nor the
+  replica runs;
+- a server whose display language is not English, where `PreferredCulture` must return English
+  titles and category names for the rules and the Upgrades exclusion;
+- a large SUSDB that has gone without maintenance: first-run durations, the time budget across
+  several nights, and built-in cleanup time-outs;
+- a top-tier server on a workgroup host (section 2), which the `windows-wsus` role does not deploy
+  yet.
+
+### 12.2 Risks and limits
+
 - **WSUS API connection time-out.** The administration API has no connection time-out parameter;
   `run.connectionTimeoutSeconds` bounds the SUSDB connection only, and the API connection is
   bounded by the API's own web-request time-out.
@@ -1150,6 +1335,20 @@ checks compare the download settings with the per-deployment values in `health.d
   the end of its value or line, which can hide more than the password.
 - **Event source.** Deployment (I3) must register the source in the configured log; otherwise
   every run logs one warning and writes no events.
+- **Folders prepared by hand.** A data folder created by hand under `%ProgramData%` inherits write
+  access for standard users and is refused; the run then stops until the folder is protected or
+  `run.permissiveFolderOverride` is set. The script's own location has no override. The trust
+  test reads the access control list as written; it does not evaluate group membership, so a
+  rule for a group that contains only administrators still counts as another principal.
+- **Errors before the run log.** An unexpected error while reading the configuration or opening
+  the outputs exits 1 without a report, because no report location is known yet; nothing has
+  been changed at that point.
+- **Termination.** Termination is simulated in the tests by stopping a stage between items; a
+  live interruption (lane A) is still owed. A built-in cleanup option that is terminated restarts
+  from the beginning on the next run.
+- **Dependency check scope.** Only the components the script calls are checked (the WSUS
+  administration API, the SQL Server client and the IIS configuration); a component that is
+  present but broken still fails in its stage.
 
 [plan]: https://learn.microsoft.com/windows-server/administration/windows-server-update-services/plan/plan-your-wsus-deployment
 [guide]: https://learn.microsoft.com/troubleshoot/mem/configmgr/update-management/wsus-maintenance-guide

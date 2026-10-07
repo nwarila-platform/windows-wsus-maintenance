@@ -4,18 +4,14 @@ Unattended maintenance for Windows Server Update Services (WSUS) servers backed 
 Microsoft-documented cleanup and SUSDB upkeep, update declines, housekeeping, health checks and
 reporting, packaged as one Windows PowerShell 5.1 script that a scheduled task runs.
 
-> **Status: pre-release.** Milestones M0 (scaffold), M1 (configuration and validation), M2 (run
-> control: stage plan, lock, elevation, time budget), M3 (run log, text and HTML reports, JSON
-> summary, events, failure reports), M4 (discovery, connections, server tier, database
-> permissions, synchronization guard), M5 (SUSDB upkeep: backup and retention, backup gate,
-> custom indexes, the spDeleteUpdate fix, obsolete-update deletion, sync-history cleanup,
-> re-index and statistics), M6 (the built-in WSUS cleanup, one option at a time, and stale
-> computer removal with its guard), M7 (the decline engine: superseded, accelerated, expired
-> and rule-based declines, and declined-update deletion, off by default) and M8 (lifecycle
-> automation: content staging and deferred per-group approval of the updates clients need, off
-> by default) and M9 (IIS log and artifact retention, and the read-only health checks) are
-> complete; every stage is implemented. See
-> [docs/DESIGN.md](docs/DESIGN.md) for the design and milestone plan.
+> **Status: release one built, not yet released.** Milestones M0 to M10 are complete: the
+> configuration and validation, run control, reporting, discovery and preconditions, SUSDB upkeep,
+> the built-in cleanup and stale computers, the decline engine, lifecycle automation (off by
+> default), housekeeping and health checks, and hardening (protected folders, the dependency
+> check, failure reports for unexpected errors, re-run safety). Every stage is implemented and
+> tested against stand-ins; the evidence that only a live server can give is listed in
+> [docs/DESIGN.md](docs/DESIGN.md) section 12, with the milestone and deployment proof that will
+> provide it.
 
 ## Supported servers
 
@@ -50,9 +46,18 @@ Windows PowerShell 5.1.
 ## Releases
 
 Tags matching `v*` publish a GitHub Release from a sealed build that has passed analysis, tests and
-smoke checks. Each release carries `Invoke-WsusMaintenance.ps1`, its `.sha256` sidecar and signed
-build provenance (`Invoke-WsusMaintenance.ps1.intoto.jsonl`). Consumers pin a release by tag and
-SHA-256 digest.
+smoke checks. Each release carries `Invoke-WsusMaintenance.ps1`, its `.sha256` sidecar, the two
+JSON schemas `maintenance.schema.json` and `summary.schema.json` of that version, and signed build
+provenance (`Invoke-WsusMaintenance.ps1.intoto.jsonl`) that covers the script and both schemas.
+Consumers pin a release by tag and SHA-256 digest.
+
+## Runtime security
+
+The script runs as SYSTEM and never downloads or installs anything. It creates its folders with
+access for SYSTEM, Administrators and the run identity only, refuses existing folders that other
+principals can change (unless `run.permissiveFolderOverride` is set), and refuses to run from a
+location that others can change; see
+[repo/0007](docs/decision-records/repo/0007-protected-folders-and-runtime-integrity.md).
 
 ## License
 

@@ -91,11 +91,20 @@ if ($HelpExitCode -ne 0) {
   throw ('Release script help smoke failed with exit code {0}.' -f $HelpExitCode)
 }
 
+# -ValidateOnly exit codes: 0 for a valid document, 2 when it only has warnings, 4 for every
+#   problem with the document or with the options. Options arrive as powershell.exe -File passes
+#   them, each argument one literal string, so lists are given comma-separated.
 $FixtureRoot = Join-Path -Path $ProjectRoot -ChildPath 'tests/Fixtures/Configuration'
 @(
   @{ File = 'full-valid.json'; Expected = 0 }
+  @{ File = 'minimal-valid.json'; Expected = 0 }
   @{ File = 'misspelt-key-warning.json'; Expected = 2 }
+  @{ File = 'misspelt-key.json'; Expected = 4 }
   @{ File = 'three-errors.json'; Expected = 4 }
+  @{ File = 'not-json.json'; Expected = 4 }
+  @{ File = 'empty.json'; Expected = 4 }
+  @{ File = 'unsupported-version.json'; Expected = 4 }
+  @{ File = 'plaintext-secret.json'; Expected = 4 }
   @{ File = 'does-not-exist.json'; Expected = 4 }
 ) | ForEach-Object -Process {
   $ExitCode = Invoke-ReleaseScript -ScriptArgument @('-ConfigPath', (Join-Path -Path $FixtureRoot -ChildPath $PSItem.File), '-ValidateOnly')
@@ -104,15 +113,29 @@ $FixtureRoot = Join-Path -Path $ProjectRoot -ChildPath 'tests/Fixtures/Configura
   }
 }
 
-$ExitCode = Invoke-ReleaseScript -ScriptArgument @('-ConfigPath', (Join-Path -Path $FixtureRoot -ChildPath 'minimal-valid.json'), '-Stage', 'NoSuchStage', '-ValidateOnly')
-if ($ExitCode -ne 4) {
-  throw ('Release script unknown-stage smoke exited {0}; expected 4.' -f $ExitCode)
+$MinimalConfig = Join-Path -Path $FixtureRoot -ChildPath 'minimal-valid.json'
+@(
+  @{ Case = 'a stage list'; Arguments = @('-Stage', 'Backup,Reindex', '-DryRun'); Expected = 0 }
+  @{ Case = 'an unknown stage'; Arguments = @('-Stage', 'NoSuchStage'); Expected = 4 }
+  @{ Case = 'a repeated stage'; Arguments = @('-Stage', 'Backup,backup'); Expected = 4 }
+  @{ Case = 'the index removal with its stage'; Arguments = @('-RemoveCustomIndexes', '-Stage', 'CustomIndexes,Reindex'); Expected = 0 }
+  @{ Case = 'the index removal without its stage'; Arguments = @('-RemoveCustomIndexes', '-Stage', 'Reindex'); Expected = 4 }
+  @{ Case = 'two report formats'; Arguments = @('-ReportFormat', 'Text,Html'); Expected = 0 }
+  @{ Case = 'an unknown report format'; Arguments = @('-ReportFormat', 'Pdf'); Expected = 4 }
+  @{ Case = 'an unknown verbosity'; Arguments = @('-Verbosity', 'Loud'); Expected = 4 }
+  @{ Case = 'a relative report folder'; Arguments = @('-ReportFolder', 'relative\reports'); Expected = 4 }
+) | ForEach-Object -Process {
+  $ExitCode = Invoke-ReleaseScript -ScriptArgument (@('-ConfigPath', $MinimalConfig, '-ValidateOnly') + $PSItem.Arguments)
+  if ($ExitCode -ne $PSItem.Expected) {
+    throw ('Release script -ValidateOnly smoke with {0} exited {1}; expected {2}.' -f $PSItem.Case, $ExitCode, $PSItem.Expected)
+  }
 }
 
 # A real run needs an elevated Windows session on a WSUS server. Without elevation the script
 #   stops with PreconditionFailed (3) at the elevation check; elevated on a computer without WSUS
-#   it stops with PreconditionFailed (3) at environment discovery. Either way it changes nothing
-#   and leaves a log, a failure report and a summary. On another platform no configured Windows
+#   it stops with PreconditionFailed (3) at the installation protection check (when the build
+#   folder is one that other principals can change) or at environment discovery. Either way it
+#   changes nothing and leaves a log, a failure report and a summary. On another platform no configured Windows
 #   folder is usable, so the run stops at its log (3) and writes nothing.
 $IsElevatedWindows = $False
 if ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT) {
