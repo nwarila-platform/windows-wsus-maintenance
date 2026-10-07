@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "backup": { "destination": "H:\\SUSDB", "minimumKpet": 7 },
+  "syncHistory": { "retentionDays": 30 }
+}

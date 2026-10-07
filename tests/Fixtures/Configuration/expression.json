@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "backup": { "destination": "H:\\SUSDB" },
+  "syncHistory": { "retentionDays": 30 },
+  "iisLogs": { "siteName": "$(Remove-Item -Recurse C:\\)" }
+}

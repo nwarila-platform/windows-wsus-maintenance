@@ -1,0 +1,198 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/nwarila-platform/windows-wsus-maintenance/blob/main/docs/reference/summary.schema.json",
+  "title": "WSUS maintenance run summary",
+  "description": "Machine-readable summary that Invoke-WsusMaintenance.ps1 writes once per run (WsusMaintenance-<run identifier>.json in summary.folder). Times are local with their UTC offset.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "server",
+    "status",
+    "exitCode",
+    "dryRun",
+    "startedAt",
+    "completedAt",
+    "durationSeconds",
+    "stagesRequested",
+    "failure",
+    "totals",
+    "stages",
+    "notices",
+    "artifacts"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "description": "Version of this summary format.",
+      "const": 1
+    },
+    "runId": {
+      "description": "Run identifier: start time (local, to the second) and eight random hexadecimal digits. Every log entry of the run carries it.",
+      "type": "string",
+      "pattern": "^[0-9]{8}-[0-9]{6}-[0-9a-f]{8}$"
+    },
+    "server": {
+      "description": "Computer name.",
+      "type": "string"
+    },
+    "status": {
+      "description": "Run status: the worst of the stage outcomes and notices.",
+      "enum": ["Success", "Warning", "Error"]
+    },
+    "exitCode": {
+      "description": "Process exit code (see the CLI contract).",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 6
+    },
+    "dryRun": {
+      "description": "Whether the run only simulated its changes.",
+      "type": "boolean"
+    },
+    "startedAt": {
+      "$ref": "#/definitions/time"
+    },
+    "completedAt": {
+      "$ref": "#/definitions/time"
+    },
+    "durationSeconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "stagesRequested": {
+      "description": "Stages listed with -Stage; empty for a run of every enabled stage.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "failure": {
+      "description": "Why a run stopped before its stages, or null.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "point", "message", "guidance"],
+          "properties": {
+            "kind": { "enum": ["PreconditionFailed", "ConfigurationInvalid"] },
+            "point": { "type": "string" },
+            "message": { "type": "string" },
+            "guidance": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stages", "notices"],
+      "properties": {
+        "stages": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["success", "warning", "error", "skipped", "notRun"],
+          "properties": {
+            "success": { "$ref": "#/definitions/count" },
+            "warning": { "$ref": "#/definitions/count" },
+            "error": { "$ref": "#/definitions/count" },
+            "skipped": { "$ref": "#/definitions/count" },
+            "notRun": { "$ref": "#/definitions/count" }
+          }
+        },
+        "notices": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["error", "high", "warning", "information"],
+          "properties": {
+            "error": { "$ref": "#/definitions/count" },
+            "high": { "$ref": "#/definitions/count" },
+            "warning": { "$ref": "#/definitions/count" },
+            "information": { "$ref": "#/definitions/count" }
+          }
+        }
+      }
+    },
+    "stages": {
+      "description": "One entry per stage in execution order; empty when the run stopped before its stages.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/stage" }
+    },
+    "notices": {
+      "description": "Every notice, highest severity first.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/notice" }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["log", "reports"],
+      "properties": {
+        "log": {
+          "description": "Path of the run log; empty when none was written.",
+          "type": "string"
+        },
+        "reports": {
+          "description": "Paths of the saved report files.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "time": {
+      "description": "Local time with its UTC offset, for example 2026-11-01T02:00:00.000+01:00.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}[+-][0-9]{2}:[0-9]{2}$"
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "order", "status", "reason", "startedAt", "durationSeconds", "counts", "message", "itemCount", "errorMessage", "errorTime"],
+      "properties": {
+        "name": { "type": "string" },
+        "order": { "type": "integer", "minimum": 1 },
+        "status": { "enum": ["Success", "Warning", "Error", "Skipped", "NotRun"] },
+        "reason": { "type": "string" },
+        "startedAt": {
+          "description": "When the stage started; null for a stage that did not run.",
+          "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/time" }]
+        },
+        "durationSeconds": { "type": "number", "minimum": 0 },
+        "counts": {
+          "description": "Stage-specific counters.",
+          "type": "object",
+          "additionalProperties": { "type": ["number", "string", "boolean"] }
+        },
+        "message": { "type": "string" },
+        "itemCount": {
+          "description": "Number of items the stage acted on; the report lists at most report.maxItemsPerSection of them and the run log lists all.",
+          "$ref": "#/definitions/count"
+        },
+        "errorMessage": { "type": "string" },
+        "errorTime": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/time" }]
+        }
+      }
+    },
+    "notice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "stage", "message", "link", "command", "raisedAt"],
+      "properties": {
+        "severity": { "enum": ["Error", "High", "Warning", "Information"] },
+        "stage": { "type": "string" },
+        "message": { "type": "string" },
+        "link": { "type": "string" },
+        "command": { "type": "string" },
+        "raisedAt": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/time" }]
+        }
+      }
+    }
+  }
+}
