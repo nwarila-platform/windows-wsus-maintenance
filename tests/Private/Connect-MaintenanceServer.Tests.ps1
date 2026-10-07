@@ -34,7 +34,7 @@ Describe 'Connect-MaintenanceServer' {
     $Connection.ApiConnectedAt | Should -Be ([System.DateTime]::new(2026, 11, 2, 1, 0, 1))
     $Connection.DatabaseConnectedAt | Should -Be ([System.DateTime]::new(2026, 11, 2, 1, 0, 2))
     $Connection.Endpoint | Should -Be 'wsus01.example, port 8531, TLS'
-    $script:Server.PreferredCulture | Should -Be 'de'
+    $script:Server.PreferredCulture | Should -Be ''
     Should -Invoke -CommandName Get-WsusUpdateServer -Times 1 -Exactly -ParameterFilter { $HostName -eq '' }
     Should -Invoke -CommandName New-SqlConnection -Times 1 -Exactly -ParameterFilter {
       $ConnectionString -eq 'Data Source=WSUS01\SQLEXPRESS;Initial Catalog=SUSDB;Integrated Security=SSPI;Connect Timeout=45;Application Name=Invoke-WsusMaintenance'

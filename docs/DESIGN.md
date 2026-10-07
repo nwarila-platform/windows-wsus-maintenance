@@ -9,7 +9,7 @@ repository itself.
 The decided behaviour and defaults are stated here and in the repository's architecture decision
 records ([decision-records](decision-records/README.md)).
 
-Status date: 2026-10-07 (M0 to M6 complete; run control reworked for one nightly run of every
+Status date: 2026-10-07 (M0 to M7 complete; run control reworked for one nightly run of every
 stage).
 
 ---
@@ -115,7 +115,7 @@ Pester `Mock`. The seams, delivered and planned:
 | `Get-MaintenanceOperatingSystem`, `Get-MaintenanceIdentity` (M4) | The operating-system build and the run identity |
 | `Wait-MaintenanceInterval` (M4) | `Start-Sleep`, so the synchronization guard can be tested without waiting |
 | `Get-BackupDestinationSpace` (M5) | `System.IO.DriveInfo`: the free space of the volume holding the backup folder |
-| `New-WsusAdministrationObject` (M6) | The scope classes of the WSUS administration API (`CleanupScope`, `ComputerTargetScope`) |
+| `New-WsusAdministrationObject` (M6, M7) | The scope classes of the WSUS administration API (`CleanupScope`, `ComputerTargetScope`, `UpdateScope`) |
 | ACL, HTTP.sys binding, IIS and registry-view readers | Health and folder-protection checks |
 
 Lessons already learned in this code base:
@@ -357,8 +357,9 @@ outputs are the files above, the Event Log and the exit code.
   `discovery.wsusPort` or `discovery.wsusUseTls` is set, that host (default: this computer), port
   (default 8531 with TLS, 8530 without) and TLS setting. The endpoint shown in the report comes
   from the connected server (`Name`, `PortNumber`, `IsConnectionSecureForApiRemoting`) and the
-  version from `Version` ([IUpdateServer][iupdateserver]). Returned strings are requested in
-  `declines.evaluationLanguage`.
+  version from `Version` ([IUpdateServer][iupdateserver]). The decline stages request
+  returned strings in `declines.evaluationLanguage` while they read updates, and restore the
+  previous language afterwards (section 10, M7).
 - **SUSDB.** Integrated authentication and the `run.connectionTimeoutSeconds` connection time-out.
   Commands use no client-side time-out unless `run.databaseCommandTimeoutSeconds` sets one
   (REQ-095); a failed command is reported with how long it ran.
@@ -373,7 +374,7 @@ outputs are the files above, the Event Log and the exit code.
   | ObsoleteUpdates | `EXECUTE` on `dbo.spGetObsoleteUpdatesToCleanup` and `dbo.spDeleteUpdate` |
   | DeclinedDeletion | `EXECUTE` on `dbo.spDeleteUpdate` |
   | SyncHistory | `DELETE` on `dbo.tbEventInstance` |
-  | Reindex | database owner or sysadmin (for `sp_updatestats`) |
+  | Reindex | none checked here; statistics need the database owner or sysadmin, which the stage checks itself (M5) |
 
   Stages that work through the WSUS API need the run identity to be a WSUS administrator, which
   the elevation check covers. The script never grants a permission or changes ownership.
@@ -512,7 +513,7 @@ Notes on scope:
 | M4 | Discovery and preconditions: seams, environment and tier, permissions, sync guard and restart | 025, 044, 051–053, 090, 095, 097 | **Done** (gate green, 2026-10-07) |
 | M5 | SUSDB upkeep: indexes, procedure fix, obsolete deletion, re-index and statistics, sync history, backup, retention, gate, free space | 001, 020–024, 027, 056–058, 075 | **Done** (gate green, 2026-10-07) |
 | M6 | WSUS API cleanup and stale computers | 002, 003, 034, 057 | **Done** (gate green, 2026-10-07) |
-| M7 | Decline engine | 004, 010–016 | Planned |
+| M7 | Decline engine | 004, 010–016 | **Done** (gate green, 2026-10-07) |
 | M8 | Lifecycle automation: needed-update approval with per-group delays and deadlines, content pre-staging, late-content warning, exclusions, licences | LCA-01 to LCA-09 (section 11) | Planned (decided) |
 | M9 | Housekeeping and health | 030–032, 067 | Planned |
 | M10 | Hardening and release readiness: folder protection, dependency check, interruption tests, ADRs, schema release assets | 048, 092, 093, 096, 098 | Planned |
@@ -719,7 +720,78 @@ computers on each side of the threshold, never-synchronized and downstream compu
 guards, the override, moves that leave out existing members, a missing group, a failed computer,
 a replica refusal, a budget stop; and a whole dry run that sends SUSDB and WSUS only reads.
 
-Notes for M7 onwards:
+What M7 delivered: the stage functions `Invoke-SupersededDecline`, `Invoke-AcceleratedDecline`,
+`Invoke-ExpiredDecline`, `Invoke-RuleDecline` and `Remove-DeclinedUpdate`, registered in
+`Get-MaintenanceStageHandler`; and the helpers `Get-WsusUpdateRecord`, `ConvertTo-DeclineRecord`,
+`Get-DeclineCatalog`, `Select-SupersededUpdate`, `Invoke-SupersededPolicy`,
+`Invoke-DeclineSelection`, `New-DeclineUnavailableResult`, `Test-DeclineRuleCondition`,
+`Test-UpdateIdentity` and `ConvertTo-DeclineItemText`. The behaviour:
+
+- **Evaluation scope and language** (REQ-014, 016). The first decline stage of a run retrieves
+  the updates once (`IUpdateServer.GetUpdates` with an `UpdateScope` whose approval states are
+  not approved, latest revision approved and stale approvals, so declined updates are left out,
+  as Microsoft advises against `Any` ([ApprovedStates][approvedstates])), limited to
+  `declines.arrivalWindowDays` when set. Before retrieving, it sets the connection's preferred
+  culture to `declines.evaluationLanguage` (default `en`) and logs it; it reads every attribute
+  the policies use, then restores the previous preference ([PreferredCulture][culture]). The
+  connection step no longer sets the culture. Every decline stage of the run evaluates this
+  list, and an update one policy declines (or, in a dry run, would decline) is not counted again
+  by a later one, so a repeat run declines nothing. Each stage reports the number of updates
+  evaluated.
+- **Retrieval failure** (REQ-016). When the list cannot be retrieved or the retrieval times out,
+  no decline policy acts: each decline stage ends in error with zero declines, and the first one
+  raises one Error notice that names memory exhaustion of the WsusPool application pool in IIS
+  as a common cause. The other stages still run.
+- **SupersededDecline** (REQ-010). Every superseded update that is not declined and whose
+  revision `CreationDate` is more than `declines.superseded.ageDays` days (default 90) before the
+  run start (in UTC) is declined (`IUpdate.Decline`), as Microsoft's superseded-update script
+  selects them ([decline superseded][declinesuperseded]). Approved updates are eligible
+  (`includeApproved`, default on); `lastLevelOnly` (default off) keeps updates that supersede
+  others. The counts include the superseded updates still inside the threshold.
+- **AcceleratedDecline** (REQ-011). The same selection, limited to
+  `declines.accelerated.classifications` with its own `ageDays`; built and off by default.
+- **ExpiredDecline** (REQ-012). Every update whose publication state is `Expired` and that is not
+  declined.
+- **RuleDecline** (REQ-013). Each enabled rule of `declines.rules`, in order, whose group in
+  `declines.groups` is not disabled, declines the updates its condition matches: `all`, `any` and
+  `not` combine text tests (`Contains`, `Equals`, `Like`, `Match`, ignoring case) on the title,
+  legacy name, classification, product and product family titles and Knowledge Base numbers,
+  date tests (`OlderThanDays`, `NewerThanDays`) on the creation and arrival dates, and the update
+  source. The items give per rule its name and the numbers matched and declined, then the updates.
+  No rule ships enabled. When the evaluation language cannot be set, rule-based declines are
+  skipped with an Error notice while the age- and state-based policies still run. A rule that
+  cannot be evaluated is reported and the next rule runs.
+- **Never-decline list.** `declines.neverDecline` (Knowledge Base numbers or update GUIDs)
+  overrides every policy and rule; the updates it saves are counted as protected.
+- **Declines.** One update at a time, with the time budget checked and progress logged per
+  update; a failed decline is listed with its error, the next one proceeds and the stage ends in
+  error. The items list each update with its title, Knowledge Base references and creation date.
+- **Pending preview.** A dry run declines nothing; each policy lists its updates as
+  "pending: ..." and its message starts with "pending: N". This is how the pending declines of a
+  policy are seen, since every enabled policy acts on every run
+  ([repo/0006](decision-records/repo/0006-nightly-run-of-every-stage.md)).
+- **DeclinedDeletion** (REQ-004). Built and off by default. It retrieves the declined updates and
+  deletes each with `IUpdateServer.DeleteUpdate` ([DeleteUpdate][deleteupdate]), except updates in
+  `declinedDeletion.protected`, in `excludedClassifications` or, when `includedClassifications`
+  is not empty, outside it. The counts give found, protected, excluded by classification, deleted
+  and failed; the items list each deleted update. A failed deletion is listed and the next one
+  proceeds; any failure ends the stage in error. When classifications filter the deletion and
+  the evaluation language cannot be set, nothing is deleted. The stage is behind the backup gate.
+- **Tier gating.** Unchanged from M4: on a replica every decline stage and the deletion are
+  skipped with "skipped: replica", and with an unknown role with "skipped: server role unknown".
+
+The gate proves: superseded updates on both sides of the threshold, last-level-only, approved
+updates kept when not eligible, the never-decline list by number and identifier, a repeat run
+that declines nothing, the pending preview, a failed decline, a budget stop; the accelerated
+policy limited to its classifications; expired declines; each rule operator and field, `all`,
+`any`, `not`, a disabled group, the never-decline list, zero new declines for updates already
+declined in the run, a rule that cannot be evaluated; the language set, restored and logged, and
+rules skipped while age-based declines run when it cannot be set; one retrieval per run; a
+retrieval time-out with zero declines and one Error notice; the arrival window; deletion with
+protected and classification filters, a second run that deletes nothing, failures, the budget,
+dry run and the language guard; and deletion skipped by the backup gate.
+
+Notes for M8 onwards:
 
 - **Stage handlers.** Each stage milestone adds its handler to the table in
   `Get-MaintenanceStageHandler`. A handler is a script block with one `-Context` parameter
@@ -735,17 +807,16 @@ Notes for M7 onwards:
 - **Server facts.** `Context.Server` carries `Tier`, `Role`, `Environment`, `Permission`,
   `UpdateServer` (the connected `IUpdateServer`, also returned by `Get-WsusConnection`),
   `Database` (the open SUSDB connection, also returned by `Get-SusdbConnection`) and
-  `CommandTimeoutSeconds`. SUSDB work goes through
+  `CommandTimeoutSeconds`; the decline stages add `DeclineCatalog`. SUSDB work goes through
   `Invoke-SusdbCommand -Connection:$Context.Server.Database -TimeoutSeconds:$Context.Server.CommandTimeoutSeconds -Log:$Context.Log`
   with parameters, never concatenated values; identifiers that cannot be parameters are quoted
   with `ConvertTo-SqlIdentifier`. Scope objects of the WSUS API come from
   `New-WsusAdministrationObject`, which tests replace.
+- **Updates.** The approval stages (M8) read updates through `Get-WsusUpdateRecord` (language set
+  and restored, records with every attribute) or the run's `Get-DeclineCatalog`, and use
+  `Test-UpdateIdentity` for their exclusion list.
 - **Retries.** `Test-MaintenanceTimeout` tells a time-out from any other failure, for stages that
   retry only time-outs.
-- **Declines act on every run.** There is no preview-only mode; a dry run is the way to
-  see what a decline policy would do.
-- **Backup gate.** It applies to every catalogue entry with `AltersDatabase`, so the M7 stage
-  `DeclinedDeletion` is covered without further work.
 - **Tier gating.** Done in `Get-MaintenanceStagePlan`: on a replica the decline policies,
   declined-update deletion and stale-computer moves are skipped with "skipped: replica", and with
   an unknown tier with "skipped: server role unknown"; approval stages (M8) join the gated list.
@@ -855,6 +926,13 @@ download-only-when-approved on, with per-deployment expected values) join the he
   - which SUSDB operations and built-in cleanup options a replica refuses, and with what error;
   - which exceptions a built-in cleanup time-out raises through the administration API, so that
     the retry test recognises them;
+  - how long `GetUpdates` takes over the undeclined updates of a large server, and the memory the
+    WsusPool application pool needs for it;
+  - that setting `PreferredCulture` to `en` returns English titles and category names on a server
+    whose display language differs, and that restoring the previous (possibly empty) value works;
+  - whether `CreationDate` and `ArrivalDate` arrive in UTC, as the age tests assume;
+  - that the approval states used for the evaluation scope leave out every declined update;
+  - which errors `DeleteUpdate` raises for a declined update that other updates still reference;
   - whether `ComputerTargetScope.ToLastSyncTime` includes computers that never synchronized, and
     that `GetComputerTargetCount` over the same scope counts the population the guard compares
     against;
@@ -883,6 +961,13 @@ download-only-when-approved on, with per-deployment expected values) join the he
 - **Built-in cleanup and the run budget.** Each built-in cleanup option is one API call that
   cannot be interrupted; the budget can only stop the next option from starting. A first cleanup
   of a server that has gone without maintenance can run for hours.
+- **Declined-update deletion.** Deleting declined updates is hard to reverse: an update comes back
+  only through a re-import or a resynchronization. The stage is off by default and behind the
+  backup gate.
+- **Decline retrieval size.** All undeclined updates are read in one call; on a large server
+  with an unlimited arrival window this is the call most likely to exhaust the WsusPool
+  application pool. `declines.arrivalWindowDays` narrows it, as Microsoft's script does with six
+  months.
 - **Stale-computer guard at zero.** `staleComputers.guardCount` and `guardPercent` are upper
   limits taken literally: a value of 0 means any selection exceeds the guard, so nothing is
   removed without `staleComputers.override`.
@@ -909,6 +994,10 @@ download-only-when-approved on, with per-deployment expected values) join the he
 [maintenance]: https://learn.microsoft.com/troubleshoot/mem/configmgr/update-management/wsus-automatic-maintenance
 [scope]: https://learn.microsoft.com/previous-versions/windows/desktop/aa354275(v=vs.85)
 [stale]: https://learn.microsoft.com/previous-versions/windows/desktop/ee958382(v=vs.85)
+[approvedstates]: https://learn.microsoft.com/previous-versions/windows/desktop/aa354257(v=vs.85)
+[culture]: https://learn.microsoft.com/previous-versions/windows/desktop/ms751963(v=vs.85)
+[declinesuperseded]: https://learn.microsoft.com/troubleshoot/mem/configmgr/update-management/decline-superseded-updates
+[deleteupdate]: https://learn.microsoft.com/previous-versions/windows/desktop/aa349863(v=vs.85)
 [settings]: https://learn.microsoft.com/security-updates/windowsupdateservices/18125970
 [release]: https://learn.microsoft.com/windows/release-health/windows-server-release-info
 [adminproxy]: https://learn.microsoft.com/previous-versions/windows/desktop/ms745830(v=vs.85)

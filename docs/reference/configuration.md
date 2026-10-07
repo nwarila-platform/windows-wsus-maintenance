@@ -50,7 +50,13 @@ unique without regard to case. Every enabled rule acts on every run. A condition
   `NewerThanDays` and a whole number of days from 0 to 36500;
 - `{ "field": "UpdateSource", "operator": "Equals", "value": "MicrosoftUpdate" | "Other" }`.
 
-Conditions nest at most 16 levels. Text comparisons ignore case.
+Conditions nest at most 16 levels. Text comparisons ignore case. A list field (`ProductTitles`,
+`ProductFamilyTitles`, `KnowledgeBaseArticles`) matches when any of its entries does. Knowledge
+Base articles are the numbers WSUS stores, without a `KB` prefix; a `KB` prefix in an `Equals` or
+`Contains` value is ignored. Titles and category names are compared in `declines.evaluationLanguage`.
+Date tests compare with the start of the run minus the given days. Rules run in order, and an update a
+rule (or an earlier decline policy of the run) has declined is not counted again. An update on
+`declines.neverDecline` is never declined by any policy or rule.
 
 ## Keys
 ### `schemaVersion`

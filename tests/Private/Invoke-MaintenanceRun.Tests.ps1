@@ -277,6 +277,16 @@ Describe 'Invoke-MaintenanceRun' {
       Should -Invoke -CommandName Test-BackupGate -Times 0 -Exactly
     }
 
+    It 'keeps declined-update deletion behind the gate when it is enabled' {
+      Mock -CommandName Test-BackupGate -MockWith { [PSCustomObject]@{ Satisfied = $False; Mode = 'Required'; Detail = 'no backup' } }
+
+      $Run = Invoke-Run -Configuration (New-Configuration -Gate 'Required' -Extra ', "declinedDeletion": { "enabled": true }')
+
+      ($Run.Outcomes | Where-Object -FilterScript { $PSItem.Name -eq 'DeclinedDeletion' }).Reason | Should -Be 'skipped: no recent backup'
+      $script:Invoked | Should -Contain 'SupersededDecline:False'
+      $script:Invoked | Should -Not -Contain 'DeclinedDeletion:False'
+    }
+
     It 'lists the stages it guards in the catalogue' {
       $script:Altering | Should -Be @('CustomIndexes', 'DeleteUpdateFix', 'DeclinedDeletion', 'ObsoleteUpdates', 'BuiltInCleanup', 'SyncHistory', 'StaleComputers')
     }

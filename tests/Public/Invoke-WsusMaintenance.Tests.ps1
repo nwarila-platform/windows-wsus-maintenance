@@ -99,8 +99,10 @@ Describe 'Invoke-WsusMaintenance' {
     $Result.Status | Should -Be 'Success'
     $Result.ExitCode | Should -Be 0
     $Result.Stages | Should -HaveCount 16
-    @($Result.Stages | Where-Object -FilterScript { $PSItem.Status -eq 'Success' }).Name | Should -Be @('Backup', 'CustomIndexes', 'DeleteUpdateFix', 'ObsoleteUpdates', 'BuiltInCleanup', 'SyncHistory', 'StaleComputers', 'Reindex')
-    @($Result.Stages | Where-Object -FilterScript { $PSItem.Reason -eq 'not available in this release' }) | Should -HaveCount 5
+    @($Result.Stages | Where-Object -FilterScript { $PSItem.Status -eq 'Success' }).Name | Should -Be @('Backup', 'CustomIndexes', 'DeleteUpdateFix', 'SupersededDecline', 'ExpiredDecline', 'ObsoleteUpdates', 'BuiltInCleanup', 'SyncHistory', 'StaleComputers', 'Reindex')
+    @($Result.Stages | Where-Object -FilterScript { $PSItem.Reason -eq 'not available in this release' }).Name | Should -Be @('IisLogRetention', 'ArtifactRetention', 'HealthChecks')
+    $script:UpdateServer.State.UpdateScopes | Should -HaveCount 1
+    $script:UpdateServer.State.Cultures | Should -Be @('en', '')
     $script:UpdateServer.State.CleanupScopes | Should -HaveCount 5
     Test-Path -LiteralPath (Join-Path -Path (Get-OutputFolder -Configured 'H:\SUSDB') -ChildPath 'SUSDB_20261102.bak') | Should -BeTrue
     $Result.Run.RunId | Should -Be $script:RunId
@@ -181,7 +183,11 @@ Describe 'Invoke-WsusMaintenance' {
 
   It 'sends SUSDB and WSUS nothing but reads in a dry run of every stage' {
     $Fleet = @(For ($Index = 1; $Index -le 20; $Index++) { New-FakeComputer -Name ('pc{0:D2}.example' -f $Index) -LastSync ([System.DateTime]::UtcNow) })
-    $script:UpdateServer = New-FakeUpdateServer -Computers @($Fleet + @(New-FakeComputer -Name 'old.example' -LastSync ([System.DateTime]::MinValue)))
+    $Updates = @(
+      New-FakeUpdate -Title 'Old superseded' -Superseded $True -Created ([System.DateTime]::UtcNow.AddDays(-400))
+      New-FakeUpdate -Title 'Expired' -Expired $True
+    )
+    $script:UpdateServer = New-FakeUpdateServer -Computers @($Fleet + @(New-FakeComputer -Name 'old.example' -LastSync ([System.DateTime]::MinValue))) -Updates $Updates
 
     $Result = Invoke-WsusMaintenance -ConfigPath (Join-Path -Path $script:FixtureRoot -ChildPath 'minimal-valid.json') -DryRun
 
@@ -196,6 +202,9 @@ Describe 'Invoke-WsusMaintenance' {
     $script:UpdateServer.State.CleanupScopes | Should -HaveCount 0
     $script:UpdateServer.State.Deleted | Should -HaveCount 0
     ($Result.Stages | Where-Object -FilterScript { $PSItem.Name -eq 'StaleComputers' }).Message | Should -BeLike 'Simulation: would delete 1 computer(s)*'
+    $script:UpdateServer.State.DeclinedUpdates | Should -HaveCount 0
+    ($Result.Stages | Where-Object -FilterScript { $PSItem.Name -eq 'SupersededDecline' }).Message | Should -BeLike 'pending: 1 superseded update(s)*'
+    ($Result.Stages | Where-Object -FilterScript { $PSItem.Name -eq 'ExpiredDecline' }).Message | Should -BeLike 'pending: 1 expired update(s)*'
     Test-Path -LiteralPath (Get-OutputFolder -Configured 'H:\SUSDB') | Should -BeFalse
   }
 
