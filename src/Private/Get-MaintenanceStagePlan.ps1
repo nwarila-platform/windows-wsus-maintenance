@@ -26,7 +26,9 @@ Function Get-MaintenanceStagePlan {
         the listed stages run. A stage that configuration disables is skipped either way.
         On a replica, every stage that declines updates (the decline policies and declined-update
         deletion) is skipped with "skipped: replica", and when the tier is unknown it is skipped
-        too. A stage whose database permissions are missing is skipped and names them in Missing.
+        too; so is the stale-computer stage when its action moves computers into a group, because a
+        replica inherits its groups. A stage whose database permissions are missing is skipped and
+        names them in Missing.
 
     .PARAMETER Configuration
         Effective configuration.
@@ -106,6 +108,7 @@ Function Get-MaintenanceStagePlan {
 
   # Initialize Variable(s)
   [System.String[]]$Private:Gated = @('SupersededDecline', 'AcceleratedDecline', 'ExpiredDecline', 'RuleDecline', 'DeclinedDeletion')
+  [System.Boolean]$Private:GroupMove = $False
   [System.Boolean]$Private:Listed = @($Stage).Count -gt 0
   [System.String[]]$Private:Missing = @()
   [System.Boolean]$Private:PermissionSkip = $False
@@ -115,6 +118,9 @@ Function Get-MaintenanceStagePlan {
   [PSCustomObject[]]$Private:Result = @()
 
   $Plan = [System.Collections.Generic.List[PSCustomObject]]::new()
+
+  # Moving stale computers into a group changes group membership, which a replica inherits.
+  $GroupMove = [System.String](Get-MaintenancePropertyValue -InputObject:(Get-MaintenancePropertyValue -InputObject:$Configuration -Name:'staleComputers' -Default:$Null) -Name:'action' -Default:'') -eq 'Move'
 
   ForEach ($Entry In @(Get-MaintenanceStageCatalog)) {
     $Missing = @()
@@ -129,10 +135,10 @@ Function Get-MaintenanceStagePlan {
     } ElseIf (($Listed -eq $True) -and ($Stage -notcontains $Entry.Name)) {
       $Mode = 'Skip'
       $Reason = $Script:Message['Get-MaintenanceStagePlan.NotListed']
-    } ElseIf (($Tier -eq 'Replica') -and ($Gated -contains $Entry.Name)) {
+    } ElseIf (($Tier -eq 'Replica') -and (($Gated -contains $Entry.Name) -or (($Entry.Name -eq 'StaleComputers') -and ($GroupMove -eq $True)))) {
       $Mode = 'Skip'
       $Reason = $Script:Message['Get-MaintenanceStagePlan.Replica']
-    } ElseIf (($Tier -eq 'Unknown') -and ($Gated -contains $Entry.Name)) {
+    } ElseIf (($Tier -eq 'Unknown') -and (($Gated -contains $Entry.Name) -or (($Entry.Name -eq 'StaleComputers') -and ($GroupMove -eq $True)))) {
       $Mode = 'Skip'
       $Reason = $Script:Message['Get-MaintenanceStagePlan.RoleUnknown']
     } ElseIf ($Missing.Count -gt 0) {

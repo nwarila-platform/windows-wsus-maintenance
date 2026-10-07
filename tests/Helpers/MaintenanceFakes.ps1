@@ -52,7 +52,11 @@ Function New-FakeUpdateServer {
     [System.Boolean]$UpstreamUseSsl = $True,
     [System.Boolean]$ConfigurationFails = $False,
     [System.Boolean]$StartFails = $False,
-    [System.Boolean]$SaveFails = $False
+    [System.Boolean]$SaveFails = $False,
+    [System.Object[]]$Computers = @(),
+    [System.String[]]$Groups = @(),
+    [System.Management.Automation.ScriptBlock]$Cleanup = $Null,
+    [System.String[]]$FailingComputers = @()
   )
 
   $State = [PSCustomObject]@{
@@ -63,6 +67,33 @@ Function New-FakeUpdateServer {
     StartFails         = $StartFails
     SaveFails          = $SaveFails
     ConfigurationFails = $ConfigurationFails
+    Cleanup            = $Cleanup
+    CleanupScopes      = [System.Collections.Generic.List[System.Object]]::new()
+    Computers          = [System.Collections.Generic.List[System.Object]]::new()
+    Groups             = [System.Collections.Generic.List[System.Object]]::new()
+    FailingComputers   = @($FailingComputers)
+    Deleted            = [System.Collections.Generic.List[System.String]]::new()
+    Added              = [System.Collections.Generic.List[System.String]]::new()
+  }
+  If ($Null -eq $State.Cleanup) {
+    $State.Cleanup = { Param ($Scope) New-FakeCleanupResult -Scope $Scope }
+  }
+
+  ForEach ($Computer In $Computers) {
+    $Computer | Add-Member -MemberType NoteProperty -Name State -Value $State -Force
+    $State.Computers.Add($Computer)
+  }
+
+  ForEach ($GroupName In $Groups) {
+    $Group = [PSCustomObject]@{ Name = $GroupName; Id = [System.Guid]::NewGuid().ToString(); Members = [System.Collections.Generic.List[System.Object]]::new(); State = $State }
+    $Group | Add-Member -MemberType ScriptMethod -Name GetComputerTargets -Value { $this.Members.ToArray() }
+    $Group | Add-Member -MemberType ScriptMethod -Name AddComputerTarget -Value {
+      Param ($Target)
+      If ($this.State.FailingComputers -contains $Target.FullDomainName) { Throw ('The computer {0} could not be added to the group.' -f $Target.FullDomainName) }
+      $this.Members.Add($Target)
+      $this.State.Added.Add(('{0}:{1}' -f $this.Name, $Target.FullDomainName))
+    }
+    $State.Groups.Add($Group)
   }
 
   $Subscription = [PSCustomObject]@{ SynchronizeAutomatically = $SynchronizeAutomatically; State = $State }
@@ -98,6 +129,24 @@ Function New-FakeUpdateServer {
     State                            = $State
   }
   $Server | Add-Member -MemberType ScriptMethod -Name GetSubscription -Value { $this.Subscription }
+  $Server | Add-Member -MemberType ScriptMethod -Name GetCleanupManager -Value {
+    $Manager = [PSCustomObject]@{ State = $this.State }
+    $Manager | Add-Member -MemberType ScriptMethod -Name PerformCleanup -Value {
+      Param ($Scope)
+      $this.State.CleanupScopes.Add($Scope)
+      & $this.State.Cleanup $Scope
+    }
+    $Manager
+  }
+  $Server | Add-Member -MemberType ScriptMethod -Name GetComputerTargetCount -Value {
+    Param ($Scope)
+    @($this.State.Computers | Where-Object -FilterScript { $Scope.IncludeDownstreamComputerTargets -or (-not $PSItem.Downstream) }).Count
+  }
+  $Server | Add-Member -MemberType ScriptMethod -Name GetComputerTargets -Value {
+    Param ($Scope)
+    @($this.State.Computers | Where-Object -FilterScript { ($Scope.IncludeDownstreamComputerTargets -or (-not $PSItem.Downstream)) -and ($PSItem.LastSyncTime -le $Scope.ToLastSyncTime) })
+  }
+  $Server | Add-Member -MemberType ScriptMethod -Name GetComputerTargetGroups -Value { $this.State.Groups.ToArray() }
   $Server | Add-Member -MemberType ScriptMethod -Name GetConfiguration -Value {
     If ($this.State.ConfigurationFails) { Throw 'The configuration could not be read.' }
     $this.Configuration
@@ -219,7 +268,8 @@ Function New-FakeStageContext {
     $Permission = $Null,
     $Deadline = $Null,
     [System.Boolean]$RemoveCustomIndexes = $False,
-    $Log = $Null
+    $Log = $Null,
+    $UpdateServer = $Null
   )
 
   $Json = '{ "schemaVersion": 1, "backup": { "destination": "H:\\Backups" }' + $Extra + ' }'
@@ -233,6 +283,7 @@ Function New-FakeStageContext {
     Server              = [PSCustomObject]@{
       Tier                  = $Tier
       Database              = $Database
+      UpdateServer          = $UpdateServer
       CommandTimeoutSeconds = 0
       Permission            = $Permission
       Environment           = [PSCustomObject]@{ DatabaseName = 'SUSDB' }
@@ -275,4 +326,67 @@ Function New-UpkeepResponder {
       [PSCustomObject]@{ Fresh = 1; LastFinish = [System.DateTime]::new(2026, 11, 2, 0, 30, 0) }
     }
   }.GetNewClosure()
+}
+
+# A client computer as the WSUS administration API describes it. Delete fails for a computer the
+#   update server lists in -FailingComputers.
+Function New-FakeComputer {
+  Param (
+    [System.String]$Name,
+    $LastSync,
+    [System.Boolean]$Downstream = $False
+  )
+
+  $Computer = [PSCustomObject]@{
+    Id             = [System.Guid]::NewGuid().ToString()
+    FullDomainName = $Name
+    LastSyncTime   = $LastSync
+    OSDescription  = 'Windows Server 2022 Standard'
+    ClientVersion  = '10.0.20348.2700'
+    Downstream     = $Downstream
+    State          = $Null
+  }
+  $Computer | Add-Member -MemberType ScriptMethod -Name Delete -Value {
+    If ($this.State.FailingComputers -contains $this.FullDomainName) { Throw ('The computer {0} could not be deleted.' -f $this.FullDomainName) }
+    $this.State.Deleted.Add($this.FullDomainName)
+  }
+  $Computer
+}
+
+# The scope objects of the WSUS administration API, as New-WsusAdministrationObject creates them.
+Function New-FakeWsusObject {
+  Param ([System.String]$TypeName)
+
+  If ($TypeName -eq 'CleanupScope') {
+    [PSCustomObject]@{
+      DeclineSupersededUpdates          = $False
+      DeclineExpiredUpdates             = $False
+      CleanupObsoleteUpdates            = $False
+      CompressUpdates                   = $False
+      CleanupObsoleteComputers          = $False
+      CleanupUnneededContentFiles       = $False
+      CleanupLocalPublishedContentFiles = $False
+    }
+  } Else {
+    [PSCustomObject]@{
+      IncludeDownstreamComputerTargets = $False
+      FromLastSyncTime                 = [System.DateTime]::MinValue
+      ToLastSyncTime                   = [System.DateTime]::MaxValue
+    }
+  }
+}
+
+# Cleanup results with a non-zero counter for each option the scope selects, or for every
+#   counter with -All.
+Function New-FakeCleanupResult {
+  Param ($Scope, [System.Boolean]$All = $False)
+
+  [PSCustomObject]@{
+    SupersededUpdatesDeclined = $(If ($All -or $Scope.DeclineSupersededUpdates) { 4 } Else { 0 })
+    ExpiredUpdatesDeclined    = $(If ($All -or $Scope.DeclineExpiredUpdates) { 1 } Else { 0 })
+    ObsoleteUpdatesDeleted    = $(If ($All -or $Scope.CleanupObsoleteUpdates) { 2 } Else { 0 })
+    UpdatesCompressed         = $(If ($All -or $Scope.CompressUpdates) { 3 } Else { 0 })
+    ObsoleteComputersDeleted  = $(If ($All -or $Scope.CleanupObsoleteComputers) { 5 } Else { 0 })
+    DiskSpaceFreed            = $(If ($All -or $Scope.CleanupUnneededContentFiles) { [System.Int64]1610612736 } Else { [System.Int64]0 })
+  }
 }

@@ -59,6 +59,7 @@ Describe 'Invoke-WsusMaintenance' {
     Mock -CommandName New-SqlConnection -MockWith { $script:Database }
     Mock -CommandName Wait-MaintenanceInterval -MockWith { }
     Mock -CommandName Get-BackupDestinationSpace -MockWith { [System.Int64]100GB }
+    Mock -CommandName New-WsusAdministrationObject -MockWith { New-FakeWsusObject -TypeName $TypeName }
     Mock -CommandName New-MaintenanceLock -MockWith { $script:Lock }
     Mock -CommandName Get-MaintenanceTime -MockWith { [System.DateTime]::new(2026, 11, 2, 2, 0, 0) }
     Mock -CommandName New-MaintenanceRunId -MockWith { $script:RunId }
@@ -98,8 +99,9 @@ Describe 'Invoke-WsusMaintenance' {
     $Result.Status | Should -Be 'Success'
     $Result.ExitCode | Should -Be 0
     $Result.Stages | Should -HaveCount 16
-    @($Result.Stages | Where-Object -FilterScript { $PSItem.Status -eq 'Success' }).Name | Should -Be @('Backup', 'CustomIndexes', 'DeleteUpdateFix', 'ObsoleteUpdates', 'SyncHistory', 'Reindex')
-    @($Result.Stages | Where-Object -FilterScript { $PSItem.Reason -eq 'not available in this release' }) | Should -HaveCount 7
+    @($Result.Stages | Where-Object -FilterScript { $PSItem.Status -eq 'Success' }).Name | Should -Be @('Backup', 'CustomIndexes', 'DeleteUpdateFix', 'ObsoleteUpdates', 'BuiltInCleanup', 'SyncHistory', 'StaleComputers', 'Reindex')
+    @($Result.Stages | Where-Object -FilterScript { $PSItem.Reason -eq 'not available in this release' }) | Should -HaveCount 5
+    $script:UpdateServer.State.CleanupScopes | Should -HaveCount 5
     Test-Path -LiteralPath (Join-Path -Path (Get-OutputFolder -Configured 'H:\SUSDB') -ChildPath 'SUSDB_20261102.bak') | Should -BeTrue
     $Result.Run.RunId | Should -Be $script:RunId
     $Result.Run.Stages | Should -HaveCount 0
@@ -177,7 +179,10 @@ Describe 'Invoke-WsusMaintenance' {
     Test-Json -Json (Get-Content -LiteralPath $Result.Run.Artifacts.Summary -Raw) -SchemaFile $Schema | Should -BeTrue
   }
 
-  It 'sends SUSDB nothing but reads in a dry run of every stage' {
+  It 'sends SUSDB and WSUS nothing but reads in a dry run of every stage' {
+    $Fleet = @(For ($Index = 1; $Index -le 20; $Index++) { New-FakeComputer -Name ('pc{0:D2}.example' -f $Index) -LastSync ([System.DateTime]::UtcNow) })
+    $script:UpdateServer = New-FakeUpdateServer -Computers @($Fleet + @(New-FakeComputer -Name 'old.example' -LastSync ([System.DateTime]::MinValue)))
+
     $Result = Invoke-WsusMaintenance -ConfigPath (Join-Path -Path $script:FixtureRoot -ChildPath 'minimal-valid.json') -DryRun
 
     $Result.Status | Should -Be 'Success'
@@ -188,6 +193,9 @@ Describe 'Invoke-WsusMaintenance' {
       $Text | Should -Not -Match '(?im)^\s*(?:DELETE|INSERT|UPDATE|MERGE|ALTER|CREATE|DROP|BACKUP|TRUNCATE)\b' -Because 'a dry run only reads'
     }
     ($Result.Stages | Where-Object -FilterScript { $PSItem.Name -eq 'Backup' }).Counts.WouldCreate | Should -Be 1
+    $script:UpdateServer.State.CleanupScopes | Should -HaveCount 0
+    $script:UpdateServer.State.Deleted | Should -HaveCount 0
+    ($Result.Stages | Where-Object -FilterScript { $PSItem.Name -eq 'StaleComputers' }).Message | Should -BeLike 'Simulation: would delete 1 computer(s)*'
     Test-Path -LiteralPath (Get-OutputFolder -Configured 'H:\SUSDB') | Should -BeFalse
   }
 

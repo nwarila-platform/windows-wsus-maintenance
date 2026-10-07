@@ -9,7 +9,7 @@ repository itself.
 The decided behaviour and defaults are stated here and in the repository's architecture decision
 records ([decision-records](decision-records/README.md)).
 
-Status date: 2026-10-07 (M0 to M5 complete; run control reworked for one nightly run of every
+Status date: 2026-10-07 (M0 to M6 complete; run control reworked for one nightly run of every
 stage).
 
 ---
@@ -115,6 +115,7 @@ Pester `Mock`. The seams, delivered and planned:
 | `Get-MaintenanceOperatingSystem`, `Get-MaintenanceIdentity` (M4) | The operating-system build and the run identity |
 | `Wait-MaintenanceInterval` (M4) | `Start-Sleep`, so the synchronization guard can be tested without waiting |
 | `Get-BackupDestinationSpace` (M5) | `System.IO.DriveInfo`: the free space of the volume holding the backup folder |
+| `New-WsusAdministrationObject` (M6) | The scope classes of the WSUS administration API (`CleanupScope`, `ComputerTargetScope`) |
 | ACL, HTTP.sys binding, IIS and registry-view readers | Health and folder-protection checks |
 
 Lessons already learned in this code base:
@@ -390,12 +391,12 @@ replica setting.
 | Capability | Top tier | Autonomous downstream | Replica downstream |
 |---|---|---|---|
 | Backup, custom indexes, spDeleteUpdate fix, obsolete deletion, re-index, sync history | Runs | Runs | Runs; a refused obsolete-update deletion is reported as "rejected by server role" (warning) and ends that stage (to measure: what a replica refuses) |
-| Built-in cleanup: non-decline options | Runs | Runs | Runs (to measure: which options a replica accepts) |
+| Built-in cleanup: non-decline options | Runs | Runs | Runs; a refusal is reported as "rejected by server role" (warning) and the other options still run (to measure: which options a replica accepts) |
 | Built-in cleanup: superseded and expired declines | Runs | Runs | Suppressed: "skipped: replica" |
 | Decline policies (REQ-010 to REQ-016) | Runs | Runs | Skipped: "skipped: replica" |
 | Declined-update deletion (REQ-004; off by default) | Runs when enabled | Runs when enabled | Skipped |
-| Stale computers: delete | Runs | Runs | Runs (to measure) |
-| Stale computers: move to group | Runs | Runs | Unavailable: replicas inherit groups |
+| Stale computers: delete | Runs | Runs | Runs; a refusal is reported as "rejected by server role" (warning) and ends the stage (to measure) |
+| Stale computers: move to group | Runs | Runs | Skipped: "skipped: replica"; replicas inherit groups |
 | IIS log retention, artifact retention, health checks | Runs | Runs | Runs |
 | Deferred approval and content pre-staging (section 11) | Runs when enabled (a top tier that only synchronizes and serves leaves it off) | Runs | Skipped: "skipped: replica"; approvals are inherited |
 
@@ -510,7 +511,7 @@ Notes on scope:
 | M3 | Reporting and observability: report, text and HTML renderers, summary and schema, run log with redaction, events, failure reports | 060–062, 069, 071, 072, 074, 075, 091 | **Done** (gate green, 2026-10-07) |
 | M4 | Discovery and preconditions: seams, environment and tier, permissions, sync guard and restart | 025, 044, 051–053, 090, 095, 097 | **Done** (gate green, 2026-10-07) |
 | M5 | SUSDB upkeep: indexes, procedure fix, obsolete deletion, re-index and statistics, sync history, backup, retention, gate, free space | 001, 020–024, 027, 056–058, 075 | **Done** (gate green, 2026-10-07) |
-| M6 | WSUS API cleanup and stale computers | 002, 003, 034, 057 | Planned |
+| M6 | WSUS API cleanup and stale computers | 002, 003, 034, 057 | **Done** (gate green, 2026-10-07) |
 | M7 | Decline engine | 004, 010–016 | Planned |
 | M8 | Lifecycle automation: needed-update approval with per-group delays and deadlines, content pre-staging, late-content warning, exclusions, licences | LCA-01 to LCA-09 (section 11) | Planned (decided) |
 | M9 | Housekeeping and health | 030–032, 067 | Planned |
@@ -665,7 +666,60 @@ the missing-column warning; dated backups with each compression and same-day opt
 free-space skip, a failed backup, and the retention over mixed ages, a foreign file and a
 sub-folder; the gate closed, open and advisory; and a whole dry run that sends SUSDB only reads.
 
-Notes for M6 onwards:
+What M6 delivered: the stage functions `Invoke-WsusBuiltInCleanup` and
+`Invoke-StaleComputerCleanup`, registered in `Get-MaintenanceStageHandler`; the helpers
+`Get-WsusConnection`, `Test-MaintenanceTimeout`, `ConvertTo-MaintenanceByteText` and
+`ConvertTo-StaleComputerText`; the seam `New-WsusAdministrationObject`; and tier gating of
+stale-computer moves in `Get-MaintenanceStagePlan`. The stages:
+
+- **BuiltInCleanup** (REQ-002, 003). The WSUS cleanup manager (`IUpdateServer.GetCleanupManager`,
+  `PerformCleanup`) runs each enabled option in a cleanup scope of its own ([cleanup scope][scope]),
+  in this order: superseded-update decline, expired-update decline, obsolete updates, obsolete
+  update revisions (`CompressUpdates`), obsolete computers (off by default; the stale-computer
+  stage replaces it) and unneeded content files. Each option is isolated: a time-out (a
+  `TimeoutException`, a web request with the `Timeout` status, a SQL Server command time-out, or a
+  message saying the operation timed out, at any depth) is retried up to
+  `builtInCleanup.timeoutRetries` times while the time budget allows; any other failure is not
+  retried. A failed option is recorded with its attempts and message and an Error notice, and the
+  next option still runs; the stage then ends in error. The count reported for an option is the
+  one counter of the cleanup results that belongs to it, so with one option enabled only that
+  counter can be non-zero; disk space freed is shown in readable units. The two decline options
+  are suppressed with "skipped: replica" on a replica and "skipped: server role unknown" when the
+  role is unknown; on a replica any other refusal is reported as "rejected by server role" with a
+  Warning notice. The budget is checked before each option, and options it stops from starting
+  are named in a Warning notice. When unneeded-content cleanup runs, the stage message says that
+  it also deletes update files imported manually from the Microsoft Update Catalog.
+- **StaleComputers** (REQ-034, 057). Selects the computers whose last synchronization
+  (`IComputerTarget.LastSyncTime`, kept in UTC) is more than `staleComputers.thresholdDays` days
+  old through a `ComputerTargetScope` with `ToLastSyncTime`, leaving out clients of downstream
+  servers unless `staleComputers.includeDownstream` is set, as Microsoft's stale-computer sample
+  does ([stale computers][stale]). The total for the share is
+  `GetComputerTargetCount` over the same population. When more computers are selected than
+  `staleComputers.guardCount`, or a larger share than `staleComputers.guardPercent`, nothing is
+  changed, the selection is listed as "not changed (guard)" and a High notice is raised; with
+  `staleComputers.override` the selection is processed with a Warning notice. Each selected
+  computer is deleted (`IComputerTarget.Delete`) or, with `action` `Move`, added to the existing
+  group `staleComputers.targetGroup` (`IComputerTargetGroup.AddComputerTarget`, which Microsoft
+  documents as taking a computer out of Unassigned Computers); computers already in that group are
+  left out, and a missing group is an error that changes nothing (the group is never created).
+  The budget is checked and progress logged per computer; a failed computer is recorded and the
+  next proceeds, and the stage then ends in error; on a replica the first refusal ends the stage
+  with "rejected by server role". The items list each computer, sorted by name, with its last
+  synchronization time, operating system and client version. Moving is skipped by the stage plan
+  on a replica ("skipped: replica") and when the role is unknown, because a replica inherits its
+  groups.
+- **Dry run.** The built-in cleanup calls nothing and lists the options that would run; the
+  stale-computer stage reads but changes nothing, and its list is marked as a simulation.
+
+The gate proves: each option alone in its own scope and in order, with only its own counter taken
+from results that report every counter; only the configured options; decline options suppressed
+on a replica and with an unknown role; exactly retry count plus one attempts for a time-out,
+success on a retry, no retry for other failures; a replica refusal; a budget stop; stale
+computers on each side of the threshold, never-synchronized and downstream computers; both
+guards, the override, moves that leave out existing members, a missing group, a failed computer,
+a replica refusal, a budget stop; and a whole dry run that sends SUSDB and WSUS only reads.
+
+Notes for M7 onwards:
 
 - **Stage handlers.** Each stage milestone adds its handler to the table in
   `Get-MaintenanceStageHandler`. A handler is a script block with one `-Context` parameter
@@ -679,21 +733,22 @@ Notes for M6 onwards:
 - **Secrets.** A feature that reads a secret (none in release one) calls
   `Register-MaintenanceSecret` as soon as it has it.
 - **Server facts.** `Context.Server` carries `Tier`, `Role`, `Environment`, `Permission`,
-  `UpdateServer` (the connected `IUpdateServer`), `Database` (the open SUSDB connection, also
-  returned by `Get-SusdbConnection`) and `CommandTimeoutSeconds`. SUSDB work goes through
+  `UpdateServer` (the connected `IUpdateServer`, also returned by `Get-WsusConnection`),
+  `Database` (the open SUSDB connection, also returned by `Get-SusdbConnection`) and
+  `CommandTimeoutSeconds`. SUSDB work goes through
   `Invoke-SusdbCommand -Connection:$Context.Server.Database -TimeoutSeconds:$Context.Server.CommandTimeoutSeconds -Log:$Context.Log`
   with parameters, never concatenated values; identifiers that cannot be parameters are quoted
-  with `ConvertTo-SqlIdentifier`.
-- **Replica refusals.** The built-in cleanup's decline options and stale-computer moves read
-  `Context.Server.Tier` (M6).
+  with `ConvertTo-SqlIdentifier`. Scope objects of the WSUS API come from
+  `New-WsusAdministrationObject`, which tests replace.
+- **Retries.** `Test-MaintenanceTimeout` tells a time-out from any other failure, for stages that
+  retry only time-outs.
 - **Declines act on every run.** There is no preview-only mode; a dry run is the way to
   see what a decline policy would do.
-- **Backup gate.** It applies to every catalogue entry with `AltersDatabase`, so the M6 stages
-  `BuiltInCleanup` and `StaleComputers` and the M7 stage `DeclinedDeletion` are covered without
-  further work.
-- **Tier gating.** Done in M4 in `Get-MaintenanceStagePlan`: on a replica the decline policies
-  and declined-update deletion are skipped with "skipped: replica", and with an unknown tier with
-  "skipped: server role unknown"; approval stages (M8) join the gated list.
+- **Backup gate.** It applies to every catalogue entry with `AltersDatabase`, so the M7 stage
+  `DeclinedDeletion` is covered without further work.
+- **Tier gating.** Done in `Get-MaintenanceStagePlan`: on a replica the decline policies,
+  declined-update deletion and stale-computer moves are skipped with "skipped: replica", and with
+  an unknown tier with "skipped: server role unknown"; approval stages (M8) join the gated list.
 - **Run result.** Configuration failures throw `ConfigurationInvalid` with the full validation
   summary as `TargetObject`; precondition failures throw `PreconditionFailed` or `LockHeld`. A
   completed run returns `WsusMaintenance.RunResult` with `Stages` (16 outcomes), `Notices`, `Run`
@@ -797,7 +852,14 @@ download-only-when-approved on, with per-deployment expected values) join the he
   - the text `OBJECT_DEFINITION` returns for `dbo.spDeleteUpdate` on each supported WSUS version
     (leading comments, header, declaration spacing), before and after the fix;
   - that `sys.sp_addextendedproperty` tags the custom indexes as expected;
-  - which SUSDB operations a replica refuses, and with what error;
+  - which SUSDB operations and built-in cleanup options a replica refuses, and with what error;
+  - which exceptions a built-in cleanup time-out raises through the administration API, so that
+    the retry test recognises them;
+  - whether `ComputerTargetScope.ToLastSyncTime` includes computers that never synchronized, and
+    that `GetComputerTargetCount` over the same scope counts the population the guard compares
+    against;
+  - how `AddComputerTarget` treats a stale computer that is already in other groups (the stage,
+    like Microsoft's sample, only adds it to the target group);
   - the duration of each stage on a large SUSDB that has gone without maintenance.
 - **WSUS API connection time-out.** The administration API has no connection time-out parameter;
   `run.connectionTimeoutSeconds` bounds the SUSDB connection only, and the API connection is
@@ -818,8 +880,12 @@ download-only-when-approved on, with per-deployment expected values) join the he
 - **Same-day append.** With `backup.sameDay` set to `Append`, a second backup on the same day
   fails if compression differs from the first, because compressed and uncompressed backups cannot
   share a media set ([backup compression][compression]).
-- **Built-in cleanup and the run budget.** The built-in cleanup is one API call that cannot be
-  interrupted; the budget can only stop it from starting.
+- **Built-in cleanup and the run budget.** Each built-in cleanup option is one API call that
+  cannot be interrupted; the budget can only stop the next option from starting. A first cleanup
+  of a server that has gone without maintenance can run for hours.
+- **Stale-computer guard at zero.** `staleComputers.guardCount` and `guardPercent` are upper
+  limits taken literally: a value of 0 means any selection exceeds the guard, so nothing is
+  removed without `staleComputers.override`.
 - **Validation under PowerShell 7.** Date-like strings in JSON become `DateTime` under PowerShell 7
   (the test runtime on Linux) but stay strings under 5.1.
 - **Pinning by digest.** Renovate can move a release tag but cannot refresh the asset digest. A
@@ -841,6 +907,8 @@ download-only-when-approved on, with per-deployment expected values) join the he
 [compression]: https://learn.microsoft.com/sql/relational-databases/backup-restore/backup-compression-sql-server
 [spdelete]: https://learn.microsoft.com/troubleshoot/mem/configmgr/update-management/spdeleteupdate-slow-performance
 [maintenance]: https://learn.microsoft.com/troubleshoot/mem/configmgr/update-management/wsus-automatic-maintenance
+[scope]: https://learn.microsoft.com/previous-versions/windows/desktop/aa354275(v=vs.85)
+[stale]: https://learn.microsoft.com/previous-versions/windows/desktop/ee958382(v=vs.85)
 [settings]: https://learn.microsoft.com/security-updates/windowsupdateservices/18125970
 [release]: https://learn.microsoft.com/windows/release-health/windows-server-release-info
 [adminproxy]: https://learn.microsoft.com/previous-versions/windows/desktop/ms745830(v=vs.85)

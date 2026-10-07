@@ -57,9 +57,10 @@ requires a valid configuration, elevation (administrator or LocalSystem) and the
 connects to the WSUS administration interface and to SUSDB, detects the server tier, checks the
 database permissions of every stage and makes sure no synchronization runs, stopping one that
 does. It then plans every enabled stage (or the `-Stage` list) in catalogue order, skipping the
-decline stages on a replica and any stage that lacks a database permission, runs each in its own
-error boundary within the time budget, restarts the synchronization it stopped, closes the
-database connection, releases the lock on every path, and saves the report and the summary. A
+decline stages and stale-computer group moves on a replica (and when the server role is unknown)
+and any stage that lacks a database permission, runs each in its own error boundary within the
+time budget, restarts the synchronization it stopped, closes the database connection, releases
+the lock on every path, and saves the report and the summary. A
 stage the budget stops from starting is reported as `NotRun` with a warning and runs again on the
 next run.
 
