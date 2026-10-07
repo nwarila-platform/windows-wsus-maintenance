@@ -669,7 +669,7 @@
           "default": true
         },
         "maxAgeDays": {
-          "description": "IIS log files last modified longer ago than this are deleted. Unit: days.",
+          "description": "IIS log files last modified longer ago than this are deleted. Zero keeps every file. Unit: days.",
           "type": "integer",
           "minimum": 0,
           "maximum": 3650,
@@ -851,12 +851,45 @@
               "maximum": 2147483647,
               "default": 0
             },
+            "virtualMemoryLimitKb": {
+              "description": "Expected virtual memory limit. Unit: KB.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647,
+              "default": 0
+            },
             "regularRecyclingMinutes": {
               "description": "Expected regular recycling interval. Unit: minutes.",
               "type": "integer",
               "minimum": 0,
               "maximum": 2147483647,
               "default": 0
+            }
+          }
+        },
+        "downloadSettings": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "description": "Compare the WSUS download settings with the values this deployment expects. They are never changed.",
+              "type": "boolean",
+              "default": true
+            },
+            "expressFiles": {
+              "description": "Expected express installation files setting (DownloadExpressPackages).",
+              "type": "boolean",
+              "default": false
+            },
+            "downloadOnlyWhenApproved": {
+              "description": "Expected download-only-when-approved setting (DownloadUpdateBinariesAsNeeded). A top-tier server that downloads every update it synchronizes expects false.",
+              "type": "boolean",
+              "default": true
+            },
+            "storeFilesLocally": {
+              "description": "Expected local storage of update files (HostBinariesOnMicrosoftUpdate off).",
+              "type": "boolean",
+              "default": true
             }
           }
         },

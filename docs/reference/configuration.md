@@ -235,7 +235,7 @@ empty. The server's download settings are reported, never changed.
 | Key | Type | Valid values | Default | Meaning |
 | --- | --- | --- | --- | --- |
 | `iisLogs.enabled` | Boolean | `true`, `false` | `true` | Delete the WSUS website's IIS log files older than the maximum age. |
-| `iisLogs.maxAgeDays` | Integer | 0 to 3650 days | `90` | IIS log files last modified longer ago than this are deleted. |
+| `iisLogs.maxAgeDays` | Integer | 0 to 3650 days | `90` | IIS log files last modified longer ago than this are deleted. Zero keeps every file. |
 | `iisLogs.folder` | Path | absolute Windows path, or `null` | `null` | Override for the IIS log folder. Null means detected from the WSUS website. |
 | `iisLogs.siteName` | String | text matching the documented format, or `null` | `null` | Override for the IIS site that hosts WSUS. Null means detected. |
 
@@ -263,7 +263,12 @@ empty. The server's download settings are reported, never changed.
 | `health.appPool.idleTimeoutMinutes` | Integer | 0 to 43200 minutes | `0` | Expected idle time-out. |
 | `health.appPool.pingingEnabled` | Boolean | `true`, `false` | `false` | Expected pinging setting. |
 | `health.appPool.privateMemoryLimitKb` | Integer | 0 to 2147483647 KB | `0` | Expected private memory limit. |
+| `health.appPool.virtualMemoryLimitKb` | Integer | 0 to 2147483647 KB | `0` | Expected virtual memory limit. |
 | `health.appPool.regularRecyclingMinutes` | Integer | 0 to 2147483647 minutes | `0` | Expected regular recycling interval. |
+| `health.downloadSettings.enabled` | Boolean | `true`, `false` | `true` | Compare the WSUS download settings with the values this deployment expects. They are never changed. |
+| `health.downloadSettings.expressFiles` | Boolean | `true`, `false` | `false` | Expected express installation files setting (DownloadExpressPackages). |
+| `health.downloadSettings.downloadOnlyWhenApproved` | Boolean | `true`, `false` | `true` | Expected download-only-when-approved setting (DownloadUpdateBinariesAsNeeded). A top-tier server that downloads every update it synchronizes expects false. |
+| `health.downloadSettings.storeFilesLocally` | Boolean | `true`, `false` | `true` | Expected local storage of update files (HostBinariesOnMicrosoftUpdate off). |
 | `health.supersededCount.enabled` | Boolean | `true`, `false` | `true` | Count superseded updates that are not declined. |
 | `health.supersededCount.threshold` | Integer | 0 to 10000000 updates | `1500` | Raise a notice above this count. |
 | `health.processorCount.enabled` | Boolean | `true`, `false` | `true` | Check the logical-processor count on a virtual machine. |

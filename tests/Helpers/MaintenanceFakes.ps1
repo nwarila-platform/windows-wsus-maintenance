@@ -545,3 +545,78 @@ Function New-FakeUpdate {
   }
   $Update
 }
+
+# The IIS configuration of a server with the WSUS website, as Get-IisConfiguration reads it from
+#   applicationHost.config. The defaults describe a healthy WSUS site whose pool follows
+#   Microsoft's recommendations; -Pool* replace the pool's attributes.
+Function New-FakeIisConfiguration {
+  Param (
+    [System.String]$SiteName = 'WSUS Administration',
+    [System.String]$SiteId = '1234567',
+    [System.String]$PhysicalPath = 'C:\Program Files\Update Services\WebServices\Root',
+    [System.String]$Pool = 'WsusPool',
+    [System.String]$LogDirectory = '',
+    [System.String]$DefaultLogDirectory = '',
+    [System.Boolean]$HttpLogging = $True,
+    [System.Int32[]]$HttpsPorts = @(8531),
+    [System.Boolean]$RemoteAdministration = $True,
+    [System.String]$PoolAttributes = 'queueLength="2000"',
+    [System.String]$ProcessModel = 'idleTimeout="00:00:00" pingingEnabled="false"',
+    [System.String]$PeriodicRestart = 'privateMemory="0" memory="0" time="00:00:00"',
+    [System.String]$PoolDefaults = '',
+    [System.String]$ExtraSites = ''
+  )
+
+  $Https = (@($HttpsPorts) | ForEach-Object -Process { '<binding protocol="https" bindingInformation="*:{0}:" />' -f $PSItem }) -join ''
+  $LogFile = $(If ($LogDirectory -ne '') { '<logFile directory="{0}" />' -f $LogDirectory } Else { '' })
+  $Defaults = $(If ($DefaultLogDirectory -ne '') { '<siteDefaults><logFile directory="{0}" /></siteDefaults>' -f $DefaultLogDirectory } Else { '' })
+  $Remote = $(If ($RemoteAdministration) { '<application path="/ApiRemoting30" applicationPool="{0}"><virtualDirectory path="/" physicalPath="{1}\ApiRemoting30" /></application>' -f $Pool, $PhysicalPath } Else { '' })
+  $Module = $(If ($HttpLogging) { '<add name="HttpLoggingModule" image="%windir%\System32\inetsrv\loghttp.dll" />' } Else { '' })
+  [System.Xml.XmlDocument]$Document = [System.Xml.XmlDocument]::new()
+  $Document.LoadXml(@"
+<configuration>
+  <system.applicationHost>
+    <applicationPools>
+      <add name="DefaultAppPool" />
+      <add name="$Pool" $PoolAttributes>
+        <processModel $ProcessModel />
+        <recycling><periodicRestart $PeriodicRestart /></recycling>
+      </add>
+      <applicationPoolDefaults $PoolDefaults><processModel identityType="ApplicationPoolIdentity" /></applicationPoolDefaults>
+    </applicationPools>
+    <sites>
+      <site name="Default Web Site" id="1">
+        <application path="/"><virtualDirectory path="/" physicalPath="%SystemDrive%\inetpub\wwwroot" /></application>
+        <bindings><binding protocol="http" bindingInformation="*:80:" /></bindings>
+      </site>
+      <site name="$SiteName" id="$SiteId">
+        <application path="/" applicationPool="$Pool"><virtualDirectory path="/" physicalPath="$PhysicalPath" /></application>
+        $Remote
+        <bindings><binding protocol="http" bindingInformation="*:8530:" />$Https</bindings>
+        $LogFile
+      </site>
+      $ExtraSites
+      $Defaults
+    </sites>
+  </system.applicationHost>
+  <system.webServer><globalModules><add name="StaticFileModule" />$Module</globalModules></system.webServer>
+</configuration>
+"@)
+  $Document
+}
+
+# Registry keys of a healthy server, keyed by view and path, for a stand-in of
+#   Get-MaintenanceRegistryKey: strong cryptography set in both views and a certificate bound in
+#   HTTP.sys to -Port.
+Function New-FakeRegistry {
+  Param ([System.Int32]$Port = 8531, [System.Object]$StrongCrypto = 1)
+
+  $Framework = 'SOFTWARE\Microsoft\.NETFramework\v4.0.30319'
+  $Bindings = 'SYSTEM\CurrentControlSet\Services\HTTP\Parameters\SslBindingInfo'
+  @{
+    ('Registry64|{0}' -f $Framework)                = [PSCustomObject]@{ SubKeys = @(); Values = @{ SchUseStrongCrypto = $StrongCrypto; SystemDefaultTlsVersions = $StrongCrypto } }
+    ('Registry32|{0}' -f $Framework)                = [PSCustomObject]@{ SubKeys = @(); Values = @{ SchUseStrongCrypto = $StrongCrypto; SystemDefaultTlsVersions = $StrongCrypto } }
+    ('Registry64|{0}' -f $Bindings)                 = [PSCustomObject]@{ SubKeys = @(('0.0.0.0:{0}' -f $Port)); Values = @{} }
+    ('Registry64|{0}\0.0.0.0:{1}' -f $Bindings, $Port) = [PSCustomObject]@{ SubKeys = @(); Values = @{ SslCertHash = [System.Byte[]]@(0xAB, 0xCD, 0xEF); SslCertStoreName = 'MY' } }
+  }
+}

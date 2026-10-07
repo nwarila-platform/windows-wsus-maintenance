@@ -65,6 +65,9 @@ Function Get-MaintenanceStageHandler {
     SyncHistory        = { Param ($Context) Remove-SyncHistory -Context:$Context }
     StaleComputers     = { Param ($Context) Invoke-StaleComputerCleanup -Context:$Context }
     Reindex            = { Param ($Context) Invoke-SusdbIndexMaintenance -Context:$Context }
+    IisLogRetention    = { Param ($Context) Remove-IisLogFile -Context:$Context }
+    ArtifactRetention  = { Param ($Context) Remove-MaintenanceArtifact -Context:$Context }
+    HealthChecks       = { Param ($Context) Invoke-HealthCheck -Context:$Context }
   }
   [System.Management.Automation.ScriptBlock]$Private:Result = $Null
 

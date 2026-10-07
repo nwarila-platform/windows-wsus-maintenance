@@ -54,7 +54,16 @@ Describe 'Invoke-WsusMaintenance' {
     $script:Database = New-FakeSqlConnection -Responder (New-UpkeepResponder)
     Mock -CommandName Get-MaintenanceIdentity -MockWith { 'NT AUTHORITY\SYSTEM' }
     Mock -CommandName Get-MaintenanceOperatingSystem -MockWith { [PSCustomObject]@{ Platform = 'Win32NT'; Major = 10; Build = 20348 } }
-    Mock -CommandName Get-WsusSetupValue -MockWith { [PSCustomObject]@{ SqlServerName = [System.Environment]::MachineName; SqlDatabaseName = 'SUSDB' } }
+    Mock -CommandName Get-WsusSetupValue -MockWith { [PSCustomObject]@{ SqlServerName = [System.Environment]::MachineName; SqlDatabaseName = 'SUSDB'; TargetDir = 'C:\Program Files\Update Services\'; UsingSSL = 1 } }
+    # A healthy server for the housekeeping and health stages: the WSUS site logs into a folder
+    #   of the test drive, and the registry, certificate and computer look as they should.
+    $script:IisLogs = Join-Path -Path $TestDrive -ChildPath ([System.Guid]::NewGuid().ToString('N'))
+    $Null = New-Item -ItemType Directory -Path (Join-Path -Path $script:IisLogs -ChildPath 'W3SVC1234567') -Force
+    Mock -CommandName Get-IisConfiguration -MockWith { New-FakeIisConfiguration -LogDirectory $script:IisLogs }
+    $script:Registry = New-FakeRegistry
+    Mock -CommandName Get-MaintenanceRegistryKey -MockWith { $script:Registry[('{0}|{1}' -f $(If ($View) { $View } Else { 'Registry64' }), $Path)] }
+    Mock -CommandName Get-MaintenanceCertificate -MockWith { [PSCustomObject]@{ Subject = 'CN=wsus01.example'; NotAfter = [System.DateTime]::UtcNow.AddDays(365); Thumbprint = $Thumbprint } }
+    Mock -CommandName Get-MaintenanceMachineInfo -MockWith { [PSCustomObject]@{ Manufacturer = 'Example Hardware'; Model = 'Rack Server'; LogicalProcessors = 8 } }
     Mock -CommandName Get-WsusUpdateServer -MockWith { $script:UpdateServer }
     Mock -CommandName New-SqlConnection -MockWith { $script:Database }
     Mock -CommandName Wait-MaintenanceInterval -MockWith { }
@@ -99,8 +108,9 @@ Describe 'Invoke-WsusMaintenance' {
     $Result.Status | Should -Be 'Success'
     $Result.ExitCode | Should -Be 0
     $Result.Stages | Should -HaveCount 18
-    @($Result.Stages | Where-Object -FilterScript { $PSItem.Status -eq 'Success' }).Name | Should -Be @('Backup', 'CustomIndexes', 'DeleteUpdateFix', 'SupersededDecline', 'ExpiredDecline', 'ObsoleteUpdates', 'BuiltInCleanup', 'SyncHistory', 'StaleComputers', 'Reindex')
-    @($Result.Stages | Where-Object -FilterScript { $PSItem.Reason -eq 'not available in this release' }).Name | Should -Be @('IisLogRetention', 'ArtifactRetention', 'HealthChecks')
+    @($Result.Stages | Where-Object -FilterScript { $PSItem.Status -eq 'Success' }).Name | Should -Be @('Backup', 'CustomIndexes', 'DeleteUpdateFix', 'SupersededDecline', 'ExpiredDecline', 'ObsoleteUpdates', 'BuiltInCleanup', 'SyncHistory', 'StaleComputers', 'Reindex', 'IisLogRetention', 'ArtifactRetention', 'HealthChecks')
+    @($Result.Stages | Where-Object -FilterScript { $PSItem.Reason -eq 'not available in this release' }) | Should -HaveCount 0
+    ($Result.Stages | Where-Object -FilterScript { $PSItem.Name -eq 'HealthChecks' }).Message | Should -Be 'Ran 7 health check(s): 0 finding(s), 0 check(s) could not run.'
     $script:UpdateServer.State.UpdateScopes | Should -HaveCount 1
     $script:UpdateServer.State.Cultures | Should -Be @('en', '')
     $script:UpdateServer.State.CleanupScopes | Should -HaveCount 5

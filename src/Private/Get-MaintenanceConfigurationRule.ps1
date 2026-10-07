@@ -147,7 +147,7 @@ Function Get-MaintenanceConfigurationRule {
     @{ Path = 'declinedDeletion.includedClassifications'; Type = 'StringArray'; Default = @(); Pattern = $ClassificationPattern; Unique = $True; Description = 'When not empty, only declined updates in these classifications are deleted.' }
 
     @{ Path = 'iisLogs.enabled'; Type = 'Boolean'; Default = $True; Description = 'Delete the WSUS website''s IIS log files older than the maximum age.' }
-    @{ Path = 'iisLogs.maxAgeDays'; Type = 'Integer'; Default = 90; Minimum = 0; Maximum = 3650; Unit = 'days'; Description = 'IIS log files last modified longer ago than this are deleted.' }
+    @{ Path = 'iisLogs.maxAgeDays'; Type = 'Integer'; Default = 90; Minimum = 0; Maximum = 3650; Unit = 'days'; Description = 'IIS log files last modified longer ago than this are deleted. Zero keeps every file.' }
     @{ Path = 'iisLogs.folder'; Type = 'Path'; Pattern = $PathPattern; Nullable = $True; Default = $Null; Description = 'Override for the IIS log folder. Null means detected from the WSUS website.' }
     @{ Path = 'iisLogs.siteName'; Type = 'String'; Nullable = $True; Default = $Null; Pattern = $SitePattern; Description = 'Override for the IIS site that hosts WSUS. Null means detected.' }
 
@@ -167,7 +167,12 @@ Function Get-MaintenanceConfigurationRule {
     @{ Path = 'health.appPool.idleTimeoutMinutes'; Type = 'Integer'; Default = 0; Minimum = 0; Maximum = 43200; Unit = 'minutes'; Description = 'Expected idle time-out.' }
     @{ Path = 'health.appPool.pingingEnabled'; Type = 'Boolean'; Default = $False; Description = 'Expected pinging setting.' }
     @{ Path = 'health.appPool.privateMemoryLimitKb'; Type = 'Integer'; Default = 0; Minimum = 0; Maximum = 2147483647; Unit = 'KB'; Description = 'Expected private memory limit.' }
+    @{ Path = 'health.appPool.virtualMemoryLimitKb'; Type = 'Integer'; Default = 0; Minimum = 0; Maximum = 2147483647; Unit = 'KB'; Description = 'Expected virtual memory limit.' }
     @{ Path = 'health.appPool.regularRecyclingMinutes'; Type = 'Integer'; Default = 0; Minimum = 0; Maximum = 2147483647; Unit = 'minutes'; Description = 'Expected regular recycling interval.' }
+    @{ Path = 'health.downloadSettings.enabled'; Type = 'Boolean'; Default = $True; Description = 'Compare the WSUS download settings with the values this deployment expects. They are never changed.' }
+    @{ Path = 'health.downloadSettings.expressFiles'; Type = 'Boolean'; Default = $False; Description = 'Expected express installation files setting (DownloadExpressPackages).' }
+    @{ Path = 'health.downloadSettings.downloadOnlyWhenApproved'; Type = 'Boolean'; Default = $True; Description = 'Expected download-only-when-approved setting (DownloadUpdateBinariesAsNeeded). A top-tier server that downloads every update it synchronizes expects false.' }
+    @{ Path = 'health.downloadSettings.storeFilesLocally'; Type = 'Boolean'; Default = $True; Description = 'Expected local storage of update files (HostBinariesOnMicrosoftUpdate off).' }
     @{ Path = 'health.supersededCount.enabled'; Type = 'Boolean'; Default = $True; Description = 'Count superseded updates that are not declined.' }
     @{ Path = 'health.supersededCount.threshold'; Type = 'Integer'; Default = 1500; Minimum = 0; Maximum = 10000000; Unit = 'updates'; Description = 'Raise a notice above this count.' }
     @{ Path = 'health.processorCount.enabled'; Type = 'Boolean'; Default = $True; Description = 'Check the logical-processor count on a virtual machine.' }

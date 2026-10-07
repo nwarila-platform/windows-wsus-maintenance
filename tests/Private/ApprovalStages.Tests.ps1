@@ -263,26 +263,13 @@ Describe 'Approval stages' {
       @($Result.Notices | Where-Object -FilterScript { $PSItem.Severity -eq 'Error' })[0].Message | Should -BeLike $Message
     }
 
-    It 'reports download settings that differ from the expected ones and never changes them' {
-      $Server = New-ApprovalServer -Extra @{ ExpressFiles = $True; DownloadAll = $True; FilesOnMicrosoftUpdate = $True }
+    It 'leaves the download settings to the health checks' {
+      $Server = New-ApprovalServer -Extra @{ ExpressFiles = $True; DownloadAll = $True }
 
       $Result = Invoke-ContentStaging -Context (New-ApprovalContext -Server $Server -Stage 'ContentStaging')
 
-      $Result.Status | Should -Be 'Warning'
-      @($Result.Notices | Where-Object -FilterScript { $PSItem.Severity -eq 'Warning' }) | Should -HaveCount 3
-      $Result.Notices[0].Message | Should -BeLike 'Express installation files are on*it was not changed.'
-      $Result.Notices[1].Message | Should -BeLike '*DownloadUpdateBinariesAsNeeded is off*it was not changed.'
-      $Result.Notices[2].Message | Should -BeLike '*HostBinariesOnMicrosoftUpdate*it was not changed.'
-      $Server.Configuration.DownloadExpressPackages | Should -BeTrue
-      $Server.Configuration.DownloadUpdateBinariesAsNeeded | Should -BeFalse
-    }
-
-    It 'reports download settings it cannot read' {
-      $Server = New-ApprovalServer -Extra @{ ConfigurationFails = $True }
-
-      $Result = Invoke-ContentStaging -Context (New-ApprovalContext -Server $Server -Stage 'ContentStaging')
-
-      $Result.Notices[0].Message | Should -Be 'The download settings could not be read: The configuration could not be read.'
+      $Result.Status | Should -Be 'Success'
+      $Result.Notices | Should -HaveCount 0
     }
 
     It 'leaves an update with a licence agreement unstaged when accepting it is not allowed' {

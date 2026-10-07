@@ -13,8 +13,8 @@ reporting, packaged as one Windows PowerShell 5.1 script that a scheduled task r
 > computer removal with its guard), M7 (the decline engine: superseded, accelerated, expired
 > and rule-based declines, and declined-update deletion, off by default) and M8 (lifecycle
 > automation: content staging and deferred per-group approval of the updates clients need, off
-> by default) are complete. The housekeeping and health stages are not implemented yet and are
-> reported as not available. See
+> by default) and M9 (IIS log and artifact retention, and the read-only health checks) are
+> complete; every stage is implemented. See
 > [docs/DESIGN.md](docs/DESIGN.md) for the design and milestone plan.
 
 ## Supported servers

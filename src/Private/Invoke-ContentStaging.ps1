@@ -5,9 +5,7 @@
 # Message(s)
 $Script:Message += @{
   'Invoke-ContentStaging.Budget'             = 'Time budget reached after staging {0} update(s); the rest are staged on the next run.'
-  'Invoke-ContentStaging.DownloadAll'        = 'The server downloads the files of every synchronized update (DownloadUpdateBinariesAsNeeded is off), so content staging adds nothing. Configuration management owns this setting; it was not changed.'
   'Invoke-ContentStaging.DrySummary'         = 'pending: {0} needed update(s) would be staged in {1}; {2} needed, {3} already staged.'
-  'Invoke-ContentStaging.ExpressOn'          = 'Express installation files are on (DownloadExpressPackages); they are larger and cost upstream bandwidth. Configuration management owns this setting; it was not changed.'
   'Invoke-ContentStaging.Failed'             = 'failed: {0}: {1}'
   'Invoke-ContentStaging.FailedNotice'       = '{0} content staging action(s) failed. First failure: {1}'
   'Invoke-ContentStaging.LicenceNotAccepted' = 'not staged, licence agreement not accepted: {0}'
@@ -15,10 +13,8 @@ $Script:Message += @{
   'Invoke-ContentStaging.NoGroupSummary'     = 'nothing staged: the staging group {0} does not exist'
   'Invoke-ContentStaging.NotEmpty'           = 'Content staging did nothing: the staging group ''{0}'' has {1} member(s), and an approval for it would offer updates to them. The staging group must stay empty.'
   'Invoke-ContentStaging.NotEmptySummary'    = 'nothing staged: the staging group {0} has members'
-  'Invoke-ContentStaging.OnMicrosoftUpdate'  = 'Update files are left on Microsoft Update (HostBinariesOnMicrosoftUpdate), so nothing is downloaded to this server and content staging adds nothing. Configuration management owns this setting; it was not changed.'
-  'Invoke-ContentStaging.RemoveFailed'       = 'staging approval not removed: {0}: {1}'
   'Invoke-ContentStaging.Removed'            = 'staging approval removed, files local and approved: {0}'
-  'Invoke-ContentStaging.SettingsUnreadable' = 'The download settings could not be read: {0}'
+  'Invoke-ContentStaging.RemoveFailed'       = 'staging approval not removed: {0}: {1}'
   'Invoke-ContentStaging.Staged'             = 'staged in {0}: {1}'
   'Invoke-ContentStaging.Summary'            = 'Staged {0} update(s) in {1}; {2} needed, {3} already staged, {4} staging approval(s) removed, {5} failed.'
   'Invoke-ContentStaging.WouldRemove'        = 'pending: staging approval would be removed, files local and approved: {0}'
@@ -38,10 +34,8 @@ Function Invoke-ContentStaging {
         must have no members, including in its subgroups; otherwise nothing is staged. A licence
         agreement is accepted first when approval.acceptLicenseAgreements is set; otherwise such an
         update is not staged. Once an update is approved for a real group and its files are local, its
-        staging approval is removed. The server's download settings are only reported: a Warning notice
-        when express installation files are on, when every synchronized update is downloaded, or when
-        files are left on Microsoft Update; configuration management owns them and they are never
-        changed. A dry run changes nothing and lists what it would stage.
+        staging approval is removed. The health checks compare the server's download settings with
+        this deployment's expected values. A dry run changes nothing and lists what it would stage.
 
     .PARAMETER Context
         The stage context.
@@ -90,21 +84,18 @@ Function Invoke-ContentStaging {
   [System.Collections.Generic.List[PSCustomObject]]$Private:Notices = $Null
   [PSCustomObject]$Private:Record = $Null
   [PSCustomObject]$Private:Selection = $Null
-  [System.Object]$Private:ServerSettings = $Null
   [System.Object]$Private:Settings = $Null
   [System.DateTime]$Private:Started = [System.DateTime]::MinValue
   [System.String]$Private:Status = 'Success'
   [System.Boolean]$Private:Stopped = $False
   [System.String]$Private:Summary = [System.String]::Empty
   [System.String]$Private:Text = [System.String]::Empty
-  [System.Object]$Private:UpdateServer = $Null
   [PSCustomObject]$Private:Result = $Null
 
   $Catalog = Get-ApprovalCatalog -Context:$Context
   If (([System.String]::IsNullOrEmpty($Catalog.Error) -eq $False) -or ([System.String]::IsNullOrEmpty($Catalog.LanguageError) -eq $False)) {
     [PSCustomObject]$Result = New-ApprovalUnavailableResult -Catalog:$Catalog -Stage:$Context.StageName
   } Else {
-    $UpdateServer = Get-WsusConnection -Context:$Context
     $Settings = $Context.Configuration.approval
     $GroupName = [System.String]$Settings.staging.groupName
     $BatchSize = [System.Int32]$Context.Configuration.run.progressBatchSize
@@ -114,25 +105,6 @@ Function Invoke-ContentStaging {
     $Counts = [System.Collections.Specialized.OrderedDictionary]::new()
     ForEach ($Name In @('Needed', 'Candidates', 'Staged', 'AlreadyStaged', 'ApprovedElsewhere', 'Pending', 'StagingRemoved', 'LicencesAccepted', 'LicenceNotAccepted', 'Excluded', 'SupersededSkipped', 'Failed')) {
       $Counts[$Name] = [System.Int64]0
-    }
-
-    # Download settings, reported and never changed:
-    #   https://learn.microsoft.com/previous-versions/windows/desktop/ms752728(v=vs.85)
-    Try {
-      $ServerSettings = $UpdateServer.GetConfiguration()
-      If ([System.Boolean]$ServerSettings.DownloadExpressPackages -eq $True) {
-        $Notices.Add((New-MaintenanceNotice -Message:$Script:Message['Invoke-ContentStaging.ExpressOn'] -Severity:'Warning' -Stage:$Context.StageName))
-      }
-
-      If ([System.Boolean]$ServerSettings.DownloadUpdateBinariesAsNeeded -eq $False) {
-        $Notices.Add((New-MaintenanceNotice -Message:$Script:Message['Invoke-ContentStaging.DownloadAll'] -Severity:'Warning' -Stage:$Context.StageName))
-      }
-
-      If ([System.Boolean]$ServerSettings.HostBinariesOnMicrosoftUpdate -eq $True) {
-        $Notices.Add((New-MaintenanceNotice -Message:$Script:Message['Invoke-ContentStaging.OnMicrosoftUpdate'] -Severity:'Warning' -Stage:$Context.StageName))
-      }
-    } Catch {
-      $Notices.Add((New-MaintenanceNotice -Message:($Script:Message['Invoke-ContentStaging.SettingsUnreadable'] -f $PSItem.Exception.GetBaseException().Message) -Severity:'Warning' -Stage:$Context.StageName))
     }
 
     If ($Catalog.Groups.ContainsKey($GroupName) -eq $True) {

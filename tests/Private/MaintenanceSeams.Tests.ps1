@@ -3,7 +3,9 @@
 # SPDX-License-Identifier: MIT
 
 BeforeDiscovery {
-  $script:HasWsus = ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT) -and (Test-Path -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Update Services\Server\Setup')
+  $script:OnWindows = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
+  $script:HasWsus = $script:OnWindows -and (Test-Path -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Update Services\Server\Setup')
+  $script:HasIis = $script:OnWindows -and (Test-Path -LiteralPath ([System.Environment]::ExpandEnvironmentVariables('%windir%\System32\inetsrv\config\applicationHost.config')))
 }
 
 Describe 'Server seams' {
@@ -21,6 +23,31 @@ Describe 'Server seams' {
 
   It 'refuses to create an administration API object when the API is not installed' -Skip:$script:HasWsus {
     { New-WsusAdministrationObject -TypeName 'CleanupScope' } | Should -Throw -ExpectedMessage 'The WSUS administration API type Microsoft.UpdateServices.Administration.CleanupScope is not available; it is loaded when the run connects to WSUS.'
+  }
+
+  It 'refuses to read the IIS configuration where IIS is not installed' -Skip:$script:HasIis {
+    { Get-IisConfiguration } | Should -Throw
+  }
+
+  It 'reads a registry key in both views and returns null for a missing one' -Skip:(-not $script:OnWindows) {
+    (Get-MaintenanceRegistryKey -Path 'SOFTWARE\Microsoft\Windows NT\CurrentVersion').Values['CurrentBuild'] | Should -Not -BeNullOrEmpty
+    (Get-MaintenanceRegistryKey -Path 'SOFTWARE\Microsoft\Windows NT\CurrentVersion' -View 'Registry32') | Should -Not -BeNullOrEmpty
+    Get-MaintenanceRegistryKey -Path 'SOFTWARE\NoSuchVendor\NoSuchKey' | Should -BeNullOrEmpty
+  }
+
+  It 'refuses registry reads off Windows' -Skip:$script:OnWindows {
+    { Get-MaintenanceRegistryKey -Path 'SOFTWARE' } | Should -Throw
+  }
+
+  It 'finds no certificate for a thumbprint that is not in the store' -Skip:(-not $script:OnWindows) {
+    Get-MaintenanceCertificate -StoreName 'My' -Thumbprint '0000000000000000000000000000000000000000' | Should -BeNullOrEmpty
+  }
+
+  It 'reports the computer model and its processors' -Skip:(-not $script:OnWindows) {
+    $Machine = Get-MaintenanceMachineInfo
+
+    $Machine.LogicalProcessors | Should -BeGreaterThan 0
+    $Machine.Model | Should -Not -BeNullOrEmpty
   }
 
   It 'throws when SQL Server cannot be reached' {

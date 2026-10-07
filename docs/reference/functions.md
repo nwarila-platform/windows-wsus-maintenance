@@ -75,6 +75,10 @@ Private. Takes the system-wide run lock or stops the run.
 
 Private. Releases the system-wide run lock.
 
+## Find-WsusWebSite
+
+Private. Identifies the IIS website that hosts WSUS, whatever its name.
+
 ## Get-ApprovalCatalog
 
 Private. Gathers what the approval stages of a run need from WSUS, once.
@@ -86,6 +90,14 @@ Private. Returns the free space of the volume holding the backup folder.
 ## Get-DeclineCatalog
 
 Private. Returns the undeclined updates every decline policy of the run evaluates.
+
+## Get-IisConfiguration
+
+Private. Reads the IIS configuration of this server.
+
+## Get-MaintenanceCertificate
+
+Private. Finds a certificate in a local-machine certificate store.
 
 ## Get-MaintenanceConfigurationRule
 
@@ -103,6 +115,10 @@ Private. Looks up one dotted configuration path in a parsed document.
 
 Private. Returns the name of the identity the run uses.
 
+## Get-MaintenanceMachineInfo
+
+Private. Reports the computer model and its logical-processor count.
+
 ## Get-MaintenanceOperatingSystem
 
 Private. Returns the operating system the script runs on.
@@ -114,6 +130,10 @@ Private. Works out where and how this run reports, even when the configuration i
 ## Get-MaintenancePropertyValue
 
 Private. Reads a property that an object may not have.
+
+## Get-MaintenanceRegistryKey
+
+Private. Reads one registry key under HKEY_LOCAL_MACHINE in a given registry view.
 
 ## Get-MaintenanceStageCatalog
 
@@ -186,6 +206,10 @@ Private. Approves needed updates for each configured group once its delay has pa
 ## Invoke-ExpiredDecline
 
 Private. Declines expired updates.
+
+## Invoke-HealthCheck
+
+Private. Runs the read-only health checks.
 
 ## Invoke-MaintenanceRun
 
@@ -327,6 +351,14 @@ Private. Applies the backup retention to the backup files this script created.
 
 Private. Deletes declined updates from WSUS.
 
+## Remove-IisLogFile
+
+Private. Deletes the WSUS website's IIS log files older than the maximum age.
+
+## Remove-MaintenanceArtifact
+
+Private. Applies the retention to the run logs, reports and summaries this script wrote.
+
 ## Remove-SyncHistory
 
 Private. Deletes old synchronization-history records from SUSDB.
@@ -375,13 +407,25 @@ Private. Ensures the non-clustered SUSDB indexes Microsoft recommends exist.
 
 Private. Ends a run that failed a precondition, after reporting the failure.
 
+## Test-AppPoolHealth
+
+Private. Compares the WSUS application-pool settings with the expected values.
+
 ## Test-BackupGate
 
 Private. Decides whether stages that alter SUSDB may run, given the backup state.
 
+## Test-CertificateHealth
+
+Private. Checks the expiry of the certificate bound to each WSUS TLS port.
+
 ## Test-DeclineRuleCondition
 
 Private. Evaluates a decline-rule condition against one update.
+
+## Test-DownloadSettingHealth
+
+Private. Compares the WSUS download settings with the values this deployment expects.
 
 ## Test-MaintenanceBudget
 
@@ -443,6 +487,18 @@ Private. Validates one text configuration value.
 
 Private. Tells whether an exception, or any exception inside it, is a time-out.
 
+## Test-ProcessorHealth
+
+Private. Checks the logical-processor count of a virtual machine.
+
+## Test-StrongCryptoHealth
+
+Private. Checks the .NET Framework strong-cryptography registry values in both registry views.
+
+## Test-SupersededCountHealth
+
+Private. Counts the superseded updates that are not declined.
+
 ## Test-SusdbPermission
 
 Private. Checks, before any work, which database permissions each stage has.
@@ -454,6 +510,14 @@ Private. Tells whether the current revision of an update is approved for install
 ## Test-UpdateIdentity
 
 Private. Tells whether an update is named in a list of Knowledge Base numbers and update identifiers.
+
+## Test-VirtualMachine
+
+Private. Tells from the computer manufacturer and model whether it is a virtual machine.
+
+## Test-WsusTlsHealth
+
+Private. Checks that WSUS uses TLS.
 
 ## Wait-MaintenanceInterval
 

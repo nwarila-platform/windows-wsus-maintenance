@@ -42,7 +42,7 @@ Describe 'Test-MaintenanceStageEnabled' {
   }
 
   It 'enables the health checks only when a check is on' {
-    $Off = New-Configuration -Json '{ "health": { "tls": { "enabled": false }, "certificateExpiry": { "enabled": false }, "strongCrypto": { "enabled": false }, "appPool": { "enabled": false }, "supersededCount": { "enabled": false }, "processorCount": { "enabled": false } } }'
+    $Off = New-Configuration -Json '{ "health": { "tls": { "enabled": false }, "certificateExpiry": { "enabled": false }, "strongCrypto": { "enabled": false }, "appPool": { "enabled": false }, "downloadSettings": { "enabled": false }, "supersededCount": { "enabled": false }, "processorCount": { "enabled": false } } }'
 
     Test-MaintenanceStageEnabled -Configuration $Off -Name 'HealthChecks' | Should -BeFalse
   }

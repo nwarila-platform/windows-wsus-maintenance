@@ -9,7 +9,7 @@ repository itself.
 The decided behaviour and defaults are stated here and in the repository's architecture decision
 records ([decision-records](decision-records/README.md)).
 
-Status date: 2026-10-07 (M0 to M8 complete; run control reworked for one nightly run of every
+Status date: 2026-10-07 (M0 to M9 complete; run control reworked for one nightly run of every
 stage).
 
 ---
@@ -116,7 +116,11 @@ Pester `Mock`. The seams, delivered and planned:
 | `Wait-MaintenanceInterval` (M4) | `Start-Sleep`, so the synchronization guard can be tested without waiting |
 | `Get-BackupDestinationSpace` (M5) | `System.IO.DriveInfo`: the free space of the volume holding the backup folder |
 | `New-WsusAdministrationObject` (M6, M7) | The scope classes of the WSUS administration API (`CleanupScope`, `ComputerTargetScope`, `UpdateScope`) |
-| ACL, HTTP.sys binding, IIS and registry-view readers | Health and folder-protection checks |
+| `Get-IisConfiguration` (M9) | `applicationHost.config`, read only |
+| `Get-MaintenanceRegistryKey` (M9) | `Microsoft.Win32.RegistryKey` in the 64-bit or 32-bit view, read only: strong cryptography and HTTP.sys certificate bindings |
+| `Get-MaintenanceCertificate` (M9) | `X509Store` of the local machine, read only |
+| `Get-MaintenanceMachineInfo` (M9) | `Win32_ComputerSystem`: manufacturer, model and logical processors |
+| ACL readers | Folder-protection checks (M10) |
 
 Lessons already learned in this code base:
 
@@ -484,7 +488,7 @@ One JSON document validated before anything changes
 | Declines | Superseded updates older than 90 days, approved updates included, last-level-only off. Expired declines on. Accelerated policy off. No rules enabled. Empty never-decline list. Unlimited arrival window. Evaluation language `en`. Declined-update deletion built but off. |
 | Stale computers | Delete after 90 days. Downstream clients excluded. Change nothing if more than 10% or 50 computers would go. |
 | Retention | IIS logs 90 days. Logs, reports and summaries 90 days and 200 files each. |
-| Health | Certificate warnings at 60, 30, 14 and 7 days. Superseded-update threshold 1500. Application pool: queue length 2000, idle 0, pinging off, private memory 0, recycling 0. Processor count at least 4. |
+| Health | Certificate warnings at 60, 30, 14 and 7 days. Superseded-update threshold 1500. Application pool: queue length 2000, idle 0, pinging off, private and virtual memory 0, recycling 0. Processor count at least 4. Download settings: express files off, download only when approved, files stored locally (a top tier sets its own). |
 | Reporting | Text and HTML files, JSON summary, Event Log. 100 items per section. No mail in release one. |
 | Approval (M8) | Off by default. Updates at least one client needs; per-group delays counted from the revision creation date; deadline a configurable number of days after approval; pre-staging through an empty staging group; express files off; approve and warn when content is late; superseded updates skipped; exclusion list; licence agreements accepted; Upgrades never approved automatically. |
 | Identity | `NT AUTHORITY\SYSTEM`, made SUSDB owner by configuration management. |
@@ -518,7 +522,7 @@ Notes on scope:
 | M6 | WSUS API cleanup and stale computers | 002, 003, 034, 057 | **Done** (gate green, 2026-10-07) |
 | M7 | Decline engine | 004, 010–016 | **Done** (gate green, 2026-10-07) |
 | M8 | Lifecycle automation: needed-update approval with per-group delays and deadlines, content pre-staging, late-content warning, exclusions, licences | LCA-01 to LCA-09 (section 11) | **Done** (gate green, 2026-10-07) |
-| M9 | Housekeeping and health | 030–032, 067 | Planned |
+| M9 | Housekeeping and health | 030–032, 067 | **Done** (gate green, 2026-10-07) |
 | M10 | Hardening and release readiness: folder protection, dependency check, interruption tests, ADRs, schema release assets | 048, 092, 093, 096, 098 | Planned |
 | M11 | Runner lane: SQL Server Express and WSUS on the hosted Windows runner (spike first) | live evidence | Planned |
 
@@ -833,11 +837,8 @@ behaviour (section 11.2):
   created) and must have no members, subgroups included; otherwise nothing is staged and the
   stage ends in error. Once an update is approved for a configured group and its state is
   `Ready` (approved, with all files available ([UpdateState][updatestate])), its staging approval
-  is removed (`IUpdateApproval.Delete`). The server's download settings are reported, never
-  changed, because configuration management owns them: a Warning notice when express
-  installation files are on (`DownloadExpressPackages`), when every synchronized update is
-  downloaded (`DownloadUpdateBinariesAsNeeded` off), or when files stay on Microsoft Update
-  (`HostBinariesOnMicrosoftUpdate`) ([IUpdateServerConfiguration][config]).
+  is removed (`IUpdateApproval.Delete`). The server's download settings are checked by the health
+  checks (M9) against this deployment's expected values ([IUpdateServerConfiguration][config]).
 - **DeferredApproval** (LCA-01, 02, 03, 06). For each candidate and each group in
   `approval.groups`, in order, the update is approved for install once `delayDays` have passed
   since its revision `CreationDate`, unless that revision is already approved for the group. A
@@ -874,40 +875,100 @@ reuse of the decline list, a separate list with an arrival window; the configura
 whole run that stages and approves, lists every action in the report and the summary, and repeats
 nothing.
 
-Notes for M9 onwards:
+What M9 delivered: the stages `IisLogRetention` (`Remove-IisLogFile`), `ArtifactRetention`
+(`Remove-MaintenanceArtifact`) and `HealthChecks` (`Invoke-HealthCheck`), so every stage of the
+catalogue now has a handler; the website detection `Find-WsusWebSite`; the checks
+`Test-WsusTlsHealth`, `Test-CertificateHealth`, `Test-StrongCryptoHealth`, `Test-AppPoolHealth`,
+`Test-DownloadSettingHealth`, `Test-SupersededCountHealth`, `Test-ProcessorHealth` and
+`Test-VirtualMachine`; the read-only seams `Get-IisConfiguration`, `Get-MaintenanceRegistryKey`,
+`Get-MaintenanceCertificate` and `Get-MaintenanceMachineInfo`; and the configuration keys
+`health.appPool.virtualMemoryLimitKb` and `health.downloadSettings.*`. The behaviour:
 
-- **Stage handlers.** Each stage milestone adds its handler to the table in
-  `Get-MaintenanceStageHandler`. A handler is a script block with one `-Context` parameter
-  (`StageName`, `DryRun`, `Configuration`, `Deadline`, `RunStart`, `Log`, `Server`,
-  `RemoveCustomIndexes`, `Events`) that returns
-  `[PSCustomObject]@{ Status; Counts; Items; Message; Notices }`, built with
-  `New-MaintenanceStageResult`. A stage that works item by item calls
-  `Test-MaintenanceBudget -Deadline:$Context.Deadline` between items and
-  `Write-MaintenanceProgress -Log:$Context.Log -BatchSize:$Context.Configuration.run.progressBatchSize`
-  for each item. In a dry run the stage reads `Context.DryRun`, changes nothing and reports what it
-  would change. A stage that needs its own event writes it through `Context.Events` with
-  `Write-MaintenanceEvent` and a new `eventLog.eventIds` key.
-- **Secrets.** A feature that reads a secret (none in release one) calls
-  `Register-MaintenanceSecret` as soon as it has it.
+- **WSUS website** (REQ-031). Read from `applicationHost.config`, never by its English display
+  name: `iisLogs.siteName` when set; otherwise the site whose root physical path lies under the
+  installation folder WSUS setup recorded (`TargetDir`); otherwise the site that hosts the
+  remote-administration application `/ApiRemoting30` (WSUS installed on the default website);
+  otherwise the default name `WSUS Administration`, with a Warning notice. A renamed site is
+  therefore still found. Two matches are ambiguous and an error. The log records the site, its
+  identifier and how it was found.
+- **IisLogRetention** (REQ-030). Deletes the files with the `.log` extension directly in the
+  site's IIS log folder (its own log directory, else the site defaults, else the IIS default,
+  plus `W3SVC<id>`) or in `iisLogs.folder`, last written more than `iisLogs.maxAgeDays` days
+  (default 90) before the run start, as Microsoft describes for managing IIS log storage
+  ([IIS logs][iislogs]). Other files and sub-folders are never touched; zero days keeps every file.
+  Without the IIS HTTP logging feature the stage does nothing and suggests turning it off; a site
+  or folder that cannot be found, or an ambiguous site, deletes nothing and is an error. A file
+  that cannot be deleted is a warning and is retried on the next run.
+- **ArtifactRetention** (REQ-032). For run logs, reports and summaries, looks directly in the
+  configured folder and the built-in default folder for files named `WsusMaintenance-<run
+  identifier>` with that kind's extension, groups them by run (a run's text and HTML report are
+  one report), and deletes the runs older than `retention.<kind>.maxAgeDays` (90) by the time in
+  their identifier, or beyond the `retention.<kind>.maxCount` (200) newest. The current run's log
+  and runs dated after the run start are never deleted. Diagnostic bundles and digest-queue items
+  do not exist in release one.
+- **HealthChecks** (REQ-067 a to f). Read-only: nothing is ever changed. Each enabled check adds
+  one line to the items and each deviation raises its own notice with the current and expected
+  values:
+  - (a) TLS: WSUS setup's `UsingSSL` value; Microsoft recommends TLS as the first step after
+    installation ([best practices][bestpractices]).
+  - (b) Certificate expiry: for each https port of the WSUS website, the certificate HTTP.sys
+    binds to it (`SslBindingInfo` and `SslSniBindingInfo` registrations) is found in its
+    local-machine store; expired is an Error notice, within the smallest tier (7 days) a High
+    notice, within another tier (60, 30, 14) a Warning notice; a port without a bound
+    certificate, or one missing from its store, a Warning notice.
+  - (c) Strong cryptography: `SchUseStrongCrypto` and `SystemDefaultTlsVersions` under
+    `SOFTWARE\Microsoft\.NETFramework\v4.0.30319` in the 64-bit and 32-bit registry views must be
+    1 ([.NET TLS][dotnettls]); one notice lists every value that is not.
+  - (d) Application pool: the pool of the WSUS site's root application, read with the pool
+    defaults and the IIS defaults as fallbacks, compared with Microsoft's WsusPool
+    recommendations: queue length 2000, idle time-out 0, pinging off, private and virtual memory
+    limits 0, regular recycling 0 ([best practices][bestpractices]); one notice per setting that
+    differs.
+  - Download settings: express installation files, download only when approved and local file
+    storage, against `health.downloadSettings`, which holds this deployment's expectations (a
+    downstream that stages expects downloads only when approved; a top tier that serves every
+    update sets `downloadOnlyWhenApproved` to false); one notice per setting that differs. This
+    moved here from content staging, which keeps its refusals.
+  - (e) Superseded updates that are not declined, counted with the maintenance guide's query,
+    above 1500 ([guide]).
+  - (f) Logical processors on a virtual machine (recognised from the manufacturer and model),
+    below 4.
+
+  A check that fails raises one notice for itself and the others still run; when the IIS
+  configuration or the WSUS website cannot be read, one notice names the checks that need it.
+
+The gate proves: site detection by path (renamed site), by the remote-administration application,
+by name, the default-name fallback, ambiguity and absence, and the three sources of the log
+folder; IIS log retention over old and new logs, a non-log file, a look-alike extension and a
+sub-folder, the folder override, zero days, dry run, the missing logging feature, the error
+paths and the budget; artifact retention by age and count, reports grouped by run, foreign files
+and folders untouched, both folders, the current and future-dated runs kept, and dry run; a healthy
+server with no notice; each misconfiguration raising exactly its own notice; pool values from the
+defaults; per-deployment download expectations; disabled checks; a failing check; and the
+unreadable IIS configuration and missing site.
+
+Notes for M10 onwards:
+
+- **Stage handlers.** Every stage of the catalogue has a handler in `Get-MaintenanceStageHandler`.
+  A handler is a script block with one `-Context` parameter (`StageName`, `DryRun`,
+  `Configuration`, `Deadline`, `RunStart`, `Log`, `Server`, `RemoveCustomIndexes`, `Events`) that
+  returns `[PSCustomObject]@{ Status; Counts; Items; Message; Notices }`, built with
+  `New-MaintenanceStageResult`. A stage that works item by item checks the time budget between
+  items and logs progress. In a dry run the stage changes nothing and reports what it would
+  change. A stage that needs its own event writes it through `Context.Events`.
 - **Server facts.** `Context.Server` carries `Tier`, `Role`, `Environment`, `Permission`,
-  `UpdateServer` (also returned by `Get-WsusConnection`), `Database` (also returned by
-  `Get-SusdbConnection`) and `CommandTimeoutSeconds`; the decline and approval stages add
-  `DeclineCatalog` and `ApprovalCatalog`. SUSDB work goes through `Invoke-SusdbCommand` with
-  parameters, never concatenated values; identifiers that cannot be parameters are quoted with
-  `ConvertTo-SqlIdentifier`. Scope objects of the WSUS API come from
-  `New-WsusAdministrationObject`, which tests replace.
-- **Download-setting drift.** Content staging reports drift from fixed expectations (express
-  files off, deferred downloads on, files stored locally). Health checks (M9) add the
-  per-deployment expected values section 11.4 describes, for servers that do not stage.
-- **Retries.** `Test-MaintenanceTimeout` tells a time-out from any other failure.
+  `UpdateServer`, `Database` and `CommandTimeoutSeconds`, and the decline and approval stages add
+  `DeclineCatalog` and `ApprovalCatalog`. Windows-only reads go through the seams in section 3.3,
+  which tests replace.
+- **Strict mode.** The build runs the tests under `Set-StrictMode -Version 3.0`: a property of a
+  missing XML node or object is an error there, so code checks for null first.
 - **Tier gating.** Done in `Get-MaintenanceStagePlan`: on a replica the decline and approval
   stages, declined-update deletion and stale-computer moves are skipped with "skipped: replica",
   and with an unknown tier with "skipped: server role unknown".
 - **Run result.** Configuration failures throw `ConfigurationInvalid` with the full validation
   summary as `TargetObject`; precondition failures throw `PreconditionFailed` or `LockHeld`. A
   completed run returns `WsusMaintenance.RunResult` with `Stages` (18 outcomes), `Notices`, `Run`
-  (run identifier, stages listed with `-Stage`, start, end, duration, deadline, dry-run flag and
-  the paths of the log, reports and summary) and `Validation`.
+  and `Validation`.
 
 ## 11. Lifecycle automation
 
@@ -987,10 +1048,9 @@ carry no deadline. Fixed, not configurable: candidates are client-needed updates
 counts from the revision creation date, late content is approved with a warning, superseded
 updates are skipped while their superseding update is approved or eligible, and Upgrades stay
 excluded (`excludedClassifications` adds to it and cannot remove it). The stages `ContentStaging`
-and `DeferredApproval` follow the decline stages and precede declined-update deletion. Content
-staging reports download-setting drift from fixed expectations (express files off, deferred
-downloads on, files stored locally); the health checks (M9) add per-deployment expected values for
-servers that do not stage.
+and `DeferredApproval` follow the decline stages and precede declined-update deletion. The health
+checks compare the download settings with the per-deployment values in `health.downloadSettings`
+(section 10, M9).
 
 ## 12. Open items and risks
 
@@ -1023,6 +1083,13 @@ servers that do not stage.
   - whether `AcceptLicenseAgreement` succeeds for an update whose licence text is not yet
     downloaded, before staging has fetched it;
   - how a staging approval removal interacts with the built-in unneeded-content cleanup;
+  - that WSUS setup records `UsingSSL` (and `TargetDir`) in its registry key as the TLS and site
+    checks expect, and the names under which HTTP.sys registers the certificate of the WSUS TLS
+    port (`SslBindingInfo` or `SslSniBindingInfo`, `0.0.0.0:8531` or `[::]:8531`);
+  - the manufacturer and model strings of the hypervisors in use, for the virtual-machine test;
+  - the IIS log folder and file names of the WSUS website on each supported Windows Server
+    release, and whether the script runs as a 64-bit process (a 32-bit process would read the
+    redirected `applicationHost.config` path);
   - how long `GetUpdates` takes over the undeclined updates of a large server, and the memory the
     WsusPool application pool needs for it;
   - that setting `PreferredCulture` to `en` returns English titles and category names on a server
@@ -1104,6 +1171,9 @@ servers that do not stage.
 [approve]: https://learn.microsoft.com/previous-versions/windows/desktop/ms747129(v=vs.85)
 [updatestate]: https://learn.microsoft.com/previous-versions/windows/desktop/ms752993(v=vs.85)
 [views]: https://learn.microsoft.com/previous-versions/windows/desktop/bb410149(v=vs.85)
+[iislogs]: https://learn.microsoft.com/iis/manage/provisioning-and-managing-iis/managing-iis-log-file-storage
+[bestpractices]: https://learn.microsoft.com/troubleshoot/mem/configmgr/update-management/windows-server-update-services-best-practices
+[dotnettls]: https://learn.microsoft.com/dotnet/framework/network-programming/tls
 [settings]: https://learn.microsoft.com/security-updates/windowsupdateservices/18125970
 [release]: https://learn.microsoft.com/windows/release-health/windows-server-release-info
 [adminproxy]: https://learn.microsoft.com/previous-versions/windows/desktop/ms745830(v=vs.85)

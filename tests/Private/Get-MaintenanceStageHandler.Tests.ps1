@@ -22,6 +22,9 @@ Describe 'Get-MaintenanceStageHandler' {
       SyncHistory        = 'Remove-SyncHistory'
       StaleComputers     = 'Invoke-StaleComputerCleanup'
       Reindex            = 'Invoke-SusdbIndexMaintenance'
+      IisLogRetention    = 'Remove-IisLogFile'
+      ArtifactRetention  = 'Remove-MaintenanceArtifact'
+      HealthChecks       = 'Invoke-HealthCheck'
     }
   }
 
@@ -38,9 +41,8 @@ Describe 'Get-MaintenanceStageHandler' {
     }
   }
 
-  It 'has no handler yet for the stages a later release delivers' {
-    ForEach ($Stage In @(Get-MaintenanceStageCatalog | Where-Object -FilterScript { -not $script:Delivered.Contains($PSItem.Name) })) {
-      Get-MaintenanceStageHandler -Name $Stage.Name | Should -BeNullOrEmpty -Because $Stage.Name
-    }
+  It 'has a handler for every stage of the catalogue, and none for an unknown name' {
+    @($script:Delivered.Keys | Sort-Object) | Should -Be @(@(Get-MaintenanceStageCatalog).Name | Sort-Object)
+    Get-MaintenanceStageHandler -Name 'Unknown' | Should -BeNullOrEmpty
   }
 }
