@@ -1,0 +1,39 @@
+{
+  // Schema for editor validation. Update only when intentionally adopting a new schema.
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+
+  // Renovate config for this powershell-template consumer. Keeps GitHub
+  // Actions pinned to commit SHAs and surfaces dependency updates on a weekly,
+  // age-gated cadence.
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":semanticCommitTypeAll(chore)"
+  ],
+
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+
+  // Supply-chain quarantine. No update lands sooner than 7 days after the
+  // upstream release was published. Combined with `internalChecksFilter:
+  // "strict"`, a release whose timestamp Renovate cannot resolve is treated
+  // as failing the age check rather than silently passing.
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
+
+  "enabledManagers": [
+    "github-actions"
+  ],
+
+  "packageRules": [
+    {
+      // Pin third-party GitHub Actions to commit SHAs.
+      "matchManagers": ["github-actions"],
+      "pinDigests": true,
+      "semanticCommitType": "ci",
+      "semanticCommitScope": "deps"
+    }
+  ]
+}

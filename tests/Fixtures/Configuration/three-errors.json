@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "run": { "connectionTimeoutSeconds": 601 },
+  "backup": { "destination": "H:\\SUSDB", "minimumKept": -1 },
+  "syncHistory": { "retentionDays": 30 },
+  "report": { "formats": [ "Pdf" ] }
+}

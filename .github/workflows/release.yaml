@@ -1,0 +1,204 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  seal:
+    name: seal
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      hashes: ${{ steps.subjects.outputs.hashes }}
+      digest: ${{ steps.digest.outputs.digest }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run sealed build (Windows PowerShell)
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Task Build
+
+      - name: Create SHA-256 sidecar
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ArtifactPath = Join-Path -Path $PWD -ChildPath 'build\Invoke-WsusMaintenance.ps1'
+          $SidecarPath = '{0}.sha256' -f $ArtifactPath
+          $ArtifactName = Split-Path -Path $ArtifactPath -Leaf
+          $Hash = (Get-FileHash -Algorithm SHA256 -Path $ArtifactPath).Hash
+          $SidecarText = '{0}  {1}{2}' -f $Hash, $ArtifactName, "`n"
+
+          [System.IO.File]::WriteAllText(
+            $SidecarPath,
+            $SidecarText,
+            [System.Text.UTF8Encoding]::new($False)
+          )
+
+          Get-Content -Path $SidecarPath
+
+      - name: Compute SLSA base64 subjects
+        id: subjects
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ArtifactPath = Join-Path -Path $PWD -ChildPath 'build\Invoke-WsusMaintenance.ps1'
+          $ArtifactName = Split-Path -Path $ArtifactPath -Leaf
+          $HashLower = (Get-FileHash -Algorithm SHA256 -Path $ArtifactPath).Hash.ToLowerInvariant()
+          $Subject = '{0}  {1}{2}' -f $HashLower, $ArtifactName, "`n"
+          $Base64 = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($Subject))
+          "hashes=$Base64" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Compute sealed digest
+        id: digest
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ArtifactPath = Join-Path -Path $PWD -ChildPath 'build\Invoke-WsusMaintenance.ps1'
+          $FunctionsPath = Join-Path -Path $PWD -ChildPath 'build\Invoke-WsusMaintenance.Functions.ps1'
+
+          foreach ($RequiredPath in @($ArtifactPath, $FunctionsPath)) {
+            if (-not (Test-Path -LiteralPath $RequiredPath -PathType Leaf)) {
+              throw ('Required build artifact missing before sealing: {0}' -f $RequiredPath)
+            }
+          }
+
+          $Digest = (Get-FileHash -Algorithm SHA256 -Path $ArtifactPath).Hash.ToLowerInvariant()
+          & .\.github\scripts\Assert-SealedDigest.ps1 -Path $ArtifactPath -ExpectedDigest $Digest
+          "digest=$Digest" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Upload release candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-candidate
+          path: |
+            build/Invoke-WsusMaintenance.ps1
+            build/Invoke-WsusMaintenance.ps1.sha256
+            build/Invoke-WsusMaintenance.Functions.ps1
+          if-no-files-found: error
+
+  validate:
+    name: validate
+    needs: seal
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download release candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-candidate
+          path: build
+
+      - name: Verify sealed digest before validation
+        shell: powershell
+        env:
+          SEALED_DIGEST: ${{ needs.seal.outputs.digest }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\.github\scripts\Assert-SealedDigest.ps1 `
+            -Path (Join-Path -Path $PWD -ChildPath 'build\Invoke-WsusMaintenance.ps1') `
+            -ExpectedDigest $env:SEALED_DIGEST
+
+      - name: Install PowerShell test modules (Windows PowerShell)
+        shell: powershell
+        run: |
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck -ErrorAction Stop
+          Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -ErrorAction Stop
+
+      - name: Analyze sealed artifact
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Task Analyze
+
+      - name: Test sealed artifact
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Task Test
+
+      - name: Smoke sealed artifact
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Task Smoke
+
+  release:
+    name: release
+    needs: [seal, validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download sealed candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-candidate
+          path: build
+
+      - name: Publish release with verified assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ github.ref_name }}
+          SEALED_DIGEST: ${{ needs.seal.outputs.digest }}
+        run: |
+          set -euo pipefail
+          ps1='build/Invoke-WsusMaintenance.ps1'
+          sha='build/Invoke-WsusMaintenance.ps1.sha256'
+
+          # Binding-critical guard: the published bytes must match the digest sealed in the
+          # module-free build job . sha256sum -c fails non-zero on mismatch.
+          echo "${SEALED_DIGEST}  ${ps1}" | sha256sum -c -
+
+          notes=$(cat <<'NOTES'
+          Release assets are built by build.ps1 on Windows PowerShell 5.1 (sealed build, validated with Analyze/Test/Smoke).
+
+          SLSA build provenance (Invoke-WsusMaintenance.ps1.intoto.jsonl) is attached and signed via Sigstore; verify with slsa-verifier (see the README Releases section). The SHA-256 sidecar is a quick offline integrity check. Authenticode publisher signing is deferred.
+          NOTES
+          )
+
+          # gh in an `if` condition: a non-zero "release not found" does not trip `set -e`.
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" "$ps1" "$sha" --clobber
+          else
+            gh release create "$TAG_NAME" "$ps1" "$sha" --title "$TAG_NAME" --notes "$notes" --verify-tag
+          fi
+
+  provenance:
+    name: provenance
+    needs: [seal, release]
+    permissions:
+      id-token: write   # OIDC identity for keyless Sigstore/Fulcio signing
+      contents: write   # REQUIRED by generator_generic_slsa3.yml at startup (its jobs declare contents read/write).
+                        #   With upload-assets:true the generator's release-attaching job (softprops) USES this grant to
+                        #   attach the .intoto.jsonl to the tag's release that the release job already published (REL-02).
+      actions: read     # the generator reads this workflow run
+    # SLSA REQUIREMENT - do NOT SHA-pin this one: the trusted builder MUST be referenced by a full
+    # semantic version tag (@vX.Y.Z). slsa-verifier resolves/trusts the builder by that tag; a commit
+    # SHA (or truncated @v2 / @v2.1) makes verification FAIL. This is the deliberate, documented
+    # exception to the house "pin every action by commit SHA" rule. Renovate must preserve @vX.Y.Z.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0 # zizmor: ignore[unpinned-uses] SLSA verifier requires the builder's semantic version tag.
+    with:
+      base64-subjects: ${{ needs.seal.outputs.hashes }}
+      provenance-name: Invoke-WsusMaintenance.ps1.intoto.jsonl
+      upload-assets: true
+      upload-tag-name: ${{ github.ref_name }}

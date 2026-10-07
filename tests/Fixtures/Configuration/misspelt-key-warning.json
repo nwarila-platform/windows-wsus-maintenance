@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "configuration": { "unknownKeyPolicy": "Warning" },
+  "backup": { "destination": "H:\\SUSDB", "minimumKpet": 7 },
+  "syncHistory": { "retentionDays": 30 }
+}

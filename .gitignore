@@ -1,0 +1,50 @@
+# Default-deny: every tracked file must be explicitly allowlisted below.
+# New files that are not allowlisted are ignored by git. After staging, run
+# `git status --short` and confirm every intended file is tracked.
+**
+
+# Root files
+!/.gitattributes
+!/.gitignore
+!/CHANGELOG.md
+!/LICENSE
+!/PSScriptAnalyzerSettings.psd1
+!/README.md
+!/SECURITY.md
+!/build.ps1
+!/.release-please-manifest.json
+!/release-please-config.json
+!/renovate.json5
+
+# CI and repo metadata
+!/.github/
+!/.github/CODEOWNERS
+!/.github/workflows/
+!/.github/workflows/*.yaml
+!/.github/workflows/*.yml
+!/.github/scripts/
+!/.github/scripts/*.ps1
+
+# Analyzer rules
+!/analyzers/
+!/analyzers/*.psm1
+
+# Script source: entry point plus one function per file.
+!/src/
+!/src/**/
+!/src/**/*.ps1
+
+# Tests and their data fixtures
+!/tests/
+!/tests/**/
+!/tests/*.ps1
+!/tests/**/*.ps1
+!/tests/**/*.json
+
+# Documentation, including the published configuration schema
+!/docs/
+!/docs/**/
+!/docs/**/*.md
+!/docs/**/*.mmd
+!/docs/**/*.json
+!/docs/**/.gitkeep

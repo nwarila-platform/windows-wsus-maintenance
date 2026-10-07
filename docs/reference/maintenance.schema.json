@@ -1,0 +1,1222 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/nwarila-platform/windows-wsus-maintenance/blob/main/docs/reference/maintenance.schema.json",
+  "title": "WSUS maintenance configuration",
+  "description": "Configuration document read by Invoke-WsusMaintenance.ps1. Generated from the parameter catalogue; do not edit by hand.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "description": "Configuration schema version. This release reads version 1 only.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unknownKeyPolicy": {
+          "description": "Whether a key this release does not know fails validation (Error) or is reported and ignored (Warning).",
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "Error",
+            "Warning"
+          ],
+          "default": "Error"
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Apply every selection rule and report the intended changes without changing anything.",
+          "type": "boolean",
+          "default": false
+        },
+        "maxDurationMinutes": {
+          "description": "Run time budget. No new stage starts once it has elapsed. Zero means unlimited. Unit: minutes.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10080,
+          "default": 240
+        },
+        "databaseCommandTimeoutSeconds": {
+          "description": "Client-side timeout for each database command. Zero means no timeout. Unit: seconds.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 604800,
+          "default": 0
+        },
+        "connectionTimeoutSeconds": {
+          "description": "Timeout for establishing the WSUS and SUSDB connections. Unit: seconds.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 600,
+          "default": 30
+        },
+        "progressBatchSize": {
+          "description": "Item-by-item stages log one progress entry per this many items. Unit: items.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000,
+          "default": 1
+        },
+        "permissiveFolderOverride": {
+          "description": "Allow an existing data folder whose access control grants write access to principals other than SYSTEM, Administrators and the run identity.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "discovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sqlInstance": {
+          "description": "SQL Server instance hosting SUSDB (HOST or HOST\\INSTANCE). Null means the instance WSUS setup recorded. It must be on this server.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]{1,253}(?:\\\\[A-Za-z_][A-Za-z0-9_$#]{0,15})?$",
+          "default": null
+        },
+        "databaseName": {
+          "description": "SUSDB database name. Null means the name WSUS setup recorded.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$",
+          "default": null
+        },
+        "wsusPort": {
+          "description": "Port of the WSUS administration interface. Null means the local server's own setting; with a host name or TLS set, 8531 with TLS and 8530 without.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 65535,
+          "default": null
+        },
+        "wsusUseTls": {
+          "description": "Whether to reach the WSUS administration interface over TLS. Null means the local server's own setting.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "wsusHostName": {
+          "description": "Host name of the WSUS administration interface, which with TLS must match its certificate. Null means the local WSUS server.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$",
+          "default": null
+        }
+      }
+    },
+    "syncGuard": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pollIntervalSeconds": {
+          "description": "Interval between synchronization status checks while waiting for a stop. Unit: seconds.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600,
+          "default": 10
+        },
+        "waitSeconds": {
+          "description": "How long one stop attempt waits for the synchronization to reach a not-processing state. Unit: seconds.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400,
+          "default": 600
+        },
+        "retryDelaySeconds": {
+          "description": "Delay between stop attempts. Unit: seconds.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400,
+          "default": 60
+        },
+        "maxAttempts": {
+          "description": "Stop attempts before the run aborts with the precondition-failure code.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 3
+        },
+        "suspendSchedule": {
+          "description": "Suspend the automatic synchronization schedule for the duration of the run.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "backup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Create a full SUSDB backup with checksum verification.",
+          "type": "boolean",
+          "default": true
+        },
+        "destination": {
+          "description": "Folder for backup files, resolved on the database host. Required when backup is enabled.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(?:[A-Za-z]:\\\\|\\\\\\\\[^\\\\/:*?\"<>|]+\\\\[^\\\\/:*?\"<>|]+|%[A-Za-z_][A-Za-z0-9_()]*%)[^/:*?\"<>|]*$",
+          "default": null
+        },
+        "sameDay": {
+          "description": "Whether a second backup on the same day replaces or appends to that day's file.",
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "Replace",
+            "Append"
+          ],
+          "default": "Replace"
+        },
+        "compression": {
+          "description": "Backup compression: when the engine supports it (Auto), always, or never.",
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "Auto",
+            "Always",
+            "Never"
+          ],
+          "default": "Auto"
+        },
+        "minimumKept": {
+          "description": "Most recent backup files always kept. Unit: files.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "default": 7
+        },
+        "maximumAgeDays": {
+          "description": "Backup files older than this and outside the most recent set are deleted. Unit: days.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3650,
+          "default": 7
+        },
+        "freeSpaceMarginPercent": {
+          "description": "Free space required on the destination beyond the estimated backup size. Unit: percent.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "default": 20
+        },
+        "gate": {
+          "description": "Whether stages that delete or alter SUSDB content require a recent successful backup.",
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "Required",
+            "Advisory",
+            "Off"
+          ],
+          "default": "Required"
+        },
+        "freshnessHours": {
+          "description": "How recent a backup must be to satisfy the backup gate. Unit: hours.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8760,
+          "default": 24
+        }
+      }
+    },
+    "builtInCleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "declineSupersededUpdates": {
+          "description": "Run the built-in superseded-update decline. Suppressed automatically on a replica.",
+          "type": "boolean",
+          "default": true
+        },
+        "declineExpiredUpdates": {
+          "description": "Run the built-in expired-update decline. Suppressed automatically on a replica.",
+          "type": "boolean",
+          "default": true
+        },
+        "obsoleteUpdates": {
+          "description": "Run the built-in obsolete-update deletion.",
+          "type": "boolean",
+          "default": true
+        },
+        "compressUpdates": {
+          "description": "Remove obsolete update revisions.",
+          "type": "boolean",
+          "default": true
+        },
+        "obsoleteComputers": {
+          "description": "Run the built-in obsolete-computer deletion (fixed threshold). The stale-computer stage is the configurable alternative.",
+          "type": "boolean",
+          "default": false
+        },
+        "unneededContentFiles": {
+          "description": "Delete unneeded content files. Also removes files imported manually from the Microsoft Update Catalog.",
+          "type": "boolean",
+          "default": true
+        },
+        "timeoutRetries": {
+          "description": "Retries after a built-in cleanup time-out.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "default": 2
+        }
+      }
+    },
+    "obsoleteUpdates": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Delete obsolete updates one at a time with the SUSDB procedures.",
+          "type": "boolean",
+          "default": true
+        },
+        "maxDeletions": {
+          "description": "Per-run cap on obsolete-update deletions. Zero means no cap. Unit: updates.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000,
+          "default": 0
+        }
+      }
+    },
+    "customIndexes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Ensure the non-clustered SUSDB indexes Microsoft recommends exist.",
+          "type": "boolean",
+          "default": true
+        },
+        "additional": {
+          "description": "Additional non-clustered index definitions (name, table, columns).",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/customIndex"
+          },
+          "default": []
+        }
+      }
+    },
+    "deleteUpdateFix": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Check for, and apply when absent, the published fix for slow spDeleteUpdate.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "reindex": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Defragment fragmented SUSDB indexes, then update statistics.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "syncHistory": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Delete synchronization-history records older than the retention.",
+          "type": "boolean",
+          "default": true
+        },
+        "retentionDays": {
+          "description": "Synchronization-history records older than this are deleted. Zero removes all such records. Unit: days.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3650,
+          "default": 90
+        }
+      }
+    },
+    "staleComputers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Remove computer records that have not synchronized within the threshold.",
+          "type": "boolean",
+          "default": true
+        },
+        "thresholdDays": {
+          "description": "Days without synchronization before a computer is stale. Zero requires the override. Unit: days.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3650,
+          "default": 90
+        },
+        "includeDownstream": {
+          "description": "Include computers reported through downstream servers.",
+          "type": "boolean",
+          "default": false
+        },
+        "action": {
+          "description": "Delete stale computers or move them into the target group.",
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "Delete",
+            "Move"
+          ],
+          "default": "Delete"
+        },
+        "targetGroup": {
+          "description": "Computer group that receives stale computers. Required when the action is Move.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "pattern": "^\\S(?:.{0,254}\\S)?$",
+          "default": null
+        },
+        "guardCount": {
+          "description": "Change nothing and raise a notice if more computers than this are selected. Unit: computers.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000,
+          "default": 50
+        },
+        "guardPercent": {
+          "description": "Change nothing and raise a notice if more than this share of all computers is selected. Unit: percent.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 10
+        },
+        "override": {
+          "description": "Proceed despite a guard breach, and allow a zero-day threshold.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "declines": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "arrivalWindowDays": {
+          "description": "Only updates that arrived within this many days are evaluated. Zero means unlimited. Unit: days.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 36500,
+          "default": 0
+        },
+        "evaluationLanguage": {
+          "description": "Language in which titles and category names are retrieved for rule evaluation.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$",
+          "default": "en"
+        },
+        "neverDecline": {
+          "description": "Updates never declined by any policy, by Knowledge Base number or update GUID.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?:KB[0-9]{4,8}|[0-9]{4,8}|[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})$"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "superseded": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "description": "Decline superseded updates older than the age threshold.",
+              "type": "boolean",
+              "default": true
+            },
+            "ageDays": {
+              "description": "Superseded updates whose revision is newer than this are kept. Unit: days.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3650,
+              "default": 90
+            },
+            "lastLevelOnly": {
+              "description": "Decline only updates that are superseded but supersede nothing themselves.",
+              "type": "boolean",
+              "default": false
+            },
+            "includeApproved": {
+              "description": "Superseded updates that are currently approved are eligible.",
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "accelerated": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "description": "Apply an additional superseded-update policy to selected classifications.",
+              "type": "boolean",
+              "default": false
+            },
+            "classifications": {
+              "description": "Classification titles the accelerated policy applies to. Required when it is enabled.",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^\\S(?:.{0,254}\\S)?$"
+              },
+              "uniqueItems": true,
+              "default": []
+            },
+            "ageDays": {
+              "description": "Age threshold of the accelerated policy. Required when it is enabled. Unit: days.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 3650,
+              "default": null
+            }
+          }
+        },
+        "expired": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "description": "Decline updates whose publication state is expired.",
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "rules": {
+          "description": "Decline rules defined for the deployment. None ships enabled.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/declineRule"
+          },
+          "default": []
+        },
+        "groups": {
+          "description": "Rule groups. Disabling a group disables all of its rules.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/declineGroup"
+          },
+          "default": []
+        }
+      }
+    },
+    "declinedDeletion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Delete declined updates from WSUS. Recovery requires a re-import or resynchronization.",
+          "type": "boolean",
+          "default": false
+        },
+        "protected": {
+          "description": "Declined updates never deleted, by Knowledge Base number or update GUID.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?:KB[0-9]{4,8}|[0-9]{4,8}|[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})$"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "excludedClassifications": {
+          "description": "Classifications whose declined updates are never deleted.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^\\S(?:.{0,254}\\S)?$"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "includedClassifications": {
+          "description": "When not empty, only declined updates in these classifications are deleted.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^\\S(?:.{0,254}\\S)?$"
+          },
+          "uniqueItems": true,
+          "default": []
+        }
+      }
+    },
+    "iisLogs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Delete the WSUS website's IIS log files older than the maximum age.",
+          "type": "boolean",
+          "default": true
+        },
+        "maxAgeDays": {
+          "description": "IIS log files last modified longer ago than this are deleted. Unit: days.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3650,
+          "default": 90
+        },
+        "folder": {
+          "description": "Override for the IIS log folder. Null means detected from the WSUS website.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(?:[A-Za-z]:\\\\|\\\\\\\\[^\\\\/:*?\"<>|]+\\\\[^\\\\/:*?\"<>|]+|%[A-Za-z_][A-Za-z0-9_()]*%)[^/:*?\"<>|]*$",
+          "default": null
+        },
+        "siteName": {
+          "description": "Override for the IIS site that hosts WSUS. Null means detected.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "pattern": "^[^\\\\/?;:@&=+$,|\"<>*\\s](?:[^\\\\/?;:@&=+$,|\"<>*]{0,254}[^\\\\/?;:@&=+$,|\"<>*\\s])?$",
+          "default": null
+        }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "logs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxAgeDays": {
+              "description": "Run logs older than this are deleted. Zero keeps every age. Unit: days.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3650,
+              "default": 90
+            },
+            "maxCount": {
+              "description": "At most this many run logs are kept. Zero means no count limit. Unit: files.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000,
+              "default": 200
+            }
+          }
+        },
+        "reports": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxAgeDays": {
+              "description": "Saved reports older than this are deleted. Zero keeps every age. Unit: days.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3650,
+              "default": 90
+            },
+            "maxCount": {
+              "description": "At most this many saved reports are kept. Zero means no count limit. Unit: files.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000,
+              "default": 200
+            }
+          }
+        },
+        "summaries": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxAgeDays": {
+              "description": "Run summaries older than this are deleted. Zero keeps every age. Unit: days.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3650,
+              "default": 90
+            },
+            "maxCount": {
+              "description": "At most this many run summaries are kept. Zero means no count limit. Unit: files.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000,
+              "default": 200
+            }
+          }
+        }
+      }
+    },
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "description": "Raise a notice when WSUS does not use TLS.",
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "certificateExpiry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "description": "Report days until the certificate bound to the WSUS TLS port expires.",
+              "type": "boolean",
+              "default": true
+            },
+            "warningDays": {
+              "description": "Warning tiers, strictly descending. Unit: days.",
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3650
+              },
+              "uniqueItems": true,
+              "minItems": 1,
+              "default": [
+                60,
+                30,
+                14,
+                7
+              ]
+            }
+          }
+        },
+        "strongCrypto": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "description": "Check the .NET strong-cryptography registry values in both registry views.",
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "appPool": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "description": "Compare the WSUS application-pool settings with the expected values.",
+              "type": "boolean",
+              "default": true
+            },
+            "queueLength": {
+              "description": "Expected application-pool queue length.",
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 65535,
+              "default": 2000
+            },
+            "idleTimeoutMinutes": {
+              "description": "Expected idle time-out. Unit: minutes.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 43200,
+              "default": 0
+            },
+            "pingingEnabled": {
+              "description": "Expected pinging setting.",
+              "type": "boolean",
+              "default": false
+            },
+            "privateMemoryLimitKb": {
+              "description": "Expected private memory limit. Unit: KB.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647,
+              "default": 0
+            },
+            "regularRecyclingMinutes": {
+              "description": "Expected regular recycling interval. Unit: minutes.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647,
+              "default": 0
+            }
+          }
+        },
+        "supersededCount": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "description": "Count superseded updates that are not declined.",
+              "type": "boolean",
+              "default": true
+            },
+            "threshold": {
+              "description": "Raise a notice above this count. Unit: updates.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000000,
+              "default": 1500
+            }
+          }
+        },
+        "processorCount": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "description": "Check the logical-processor count on a virtual machine.",
+              "type": "boolean",
+              "default": true
+            },
+            "minimum": {
+              "description": "Raise a notice below this count. Unit: processors.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1024,
+              "default": 4
+            }
+          }
+        }
+      }
+    },
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "folder": {
+          "description": "Folder for saved reports, with timestamped file names.",
+          "type": "string",
+          "pattern": "^(?:[A-Za-z]:\\\\|\\\\\\\\[^\\\\/:*?\"<>|]+\\\\[^\\\\/:*?\"<>|]+|%[A-Za-z_][A-Za-z0-9_()]*%)[^/:*?\"<>|]*$",
+          "default": "%ProgramData%\\NWarila\\WsusMaintenance\\Reports"
+        },
+        "formats": {
+          "description": "Formats saved to the report folder.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "enum": [
+              "Text",
+              "Html"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "default": [
+            "Text",
+            "Html"
+          ]
+        },
+        "maxItemsPerSection": {
+          "description": "Items listed per report section; the full list goes to the run log. Unit: items.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000,
+          "default": 100
+        }
+      }
+    },
+    "log": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "folder": {
+          "description": "Folder for run logs.",
+          "type": "string",
+          "pattern": "^(?:[A-Za-z]:\\\\|\\\\\\\\[^\\\\/:*?\"<>|]+\\\\[^\\\\/:*?\"<>|]+|%[A-Za-z_][A-Za-z0-9_()]*%)[^/:*?\"<>|]*$",
+          "default": "%ProgramData%\\NWarila\\WsusMaintenance\\Logs"
+        },
+        "verbosity": {
+          "description": "Lowest level written to the run log.",
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "Error",
+            "Warning",
+            "Information",
+            "Verbose",
+            "Debug"
+          ],
+          "default": "Information"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "folder": {
+          "description": "Folder for machine-readable run summaries.",
+          "type": "string",
+          "pattern": "^(?:[A-Za-z]:\\\\|\\\\\\\\[^\\\\/:*?\"<>|]+\\\\[^\\\\/:*?\"<>|]+|%[A-Za-z_][A-Za-z0-9_()]*%)[^/:*?\"<>|]*$",
+          "default": "%ProgramData%\\NWarila\\WsusMaintenance\\Summaries"
+        },
+        "format": {
+          "description": "Run summary format.",
+          "type": "string",
+          "minLength": 1,
+          "enum": [
+            "Json"
+          ],
+          "default": "Json"
+        }
+      }
+    },
+    "eventLog": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Write Windows Event Log entries through the registered event source.",
+          "type": "boolean",
+          "default": true
+        },
+        "logName": {
+          "description": "Event log the source is registered in.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._-]{0,210}$",
+          "default": "Application"
+        },
+        "source": {
+          "description": "Event source registered by deployment.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._-]{0,210}$",
+          "default": "Invoke-WsusMaintenance"
+        },
+        "eventIds": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "runStarted": {
+              "description": "Event identifier for run start.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "default": 1000
+            },
+            "runSucceeded": {
+              "description": "Event identifier for a run that completed successfully.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "default": 1001
+            },
+            "runWarning": {
+              "description": "Event identifier for a run that completed with warnings.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "default": 1002
+            },
+            "runFailed": {
+              "description": "Event identifier for a run that completed with errors.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "default": 1003
+            },
+            "stageError": {
+              "description": "Event identifier for each stage error.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "default": 1100
+            },
+            "preconditionFailure": {
+              "description": "Event identifier for a precondition failure.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "default": 1200
+            },
+            "configurationInvalid": {
+              "description": "Event identifier for an invalid configuration.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "default": 1300
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "customIndex": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "table",
+        "columns"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+        },
+        "table": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+        },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+          }
+        }
+      }
+    },
+    "declineGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "enabled"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "declineRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "enabled",
+        "condition"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "group": {
+          "type": "string",
+          "minLength": 1
+        },
+        "condition": {
+          "$ref": "#/definitions/condition"
+        }
+      }
+    },
+    "condition": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "all"
+          ],
+          "properties": {
+            "all": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/definitions/condition"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "any"
+          ],
+          "properties": {
+            "any": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/definitions/condition"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "not"
+          ],
+          "properties": {
+            "not": {
+              "$ref": "#/definitions/condition"
+            }
+          }
+        },
+        {
+          "$ref": "#/definitions/textTest"
+        },
+        {
+          "$ref": "#/definitions/dateTest"
+        },
+        {
+          "$ref": "#/definitions/sourceTest"
+        }
+      ]
+    },
+    "textTest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "operator",
+        "value"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "enum": [
+            "ClassificationTitle",
+            "KnowledgeBaseArticles",
+            "LegacyName",
+            "ProductFamilyTitles",
+            "ProductTitles",
+            "Title"
+          ]
+        },
+        "operator": {
+          "type": "string",
+          "enum": [
+            "Contains",
+            "Equals",
+            "Like",
+            "Match"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "dateTest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "operator",
+        "value"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "enum": [
+            "ArrivalDate",
+            "CreationDate"
+          ]
+        },
+        "operator": {
+          "type": "string",
+          "enum": [
+            "NewerThanDays",
+            "OlderThanDays"
+          ]
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 36500
+        }
+      }
+    },
+    "sourceTest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "operator",
+        "value"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "enum": [
+            "UpdateSource"
+          ]
+        },
+        "operator": {
+          "type": "string",
+          "enum": [
+            "Equals"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "enum": [
+            "MicrosoftUpdate",
+            "Other"
+          ]
+        }
+      }
+    }
+  }
+}

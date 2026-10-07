@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "configuration": { "unknownKeyPolicy": "Error" },
+  "run": {
+    "dryRun": false,
+    "maxDurationMinutes": 240,
+    "databaseCommandTimeoutSeconds": 0,
+    "connectionTimeoutSeconds": 30,
+    "progressBatchSize": 1,
+    "permissiveFolderOverride": false
+  },
+  "discovery": {
+    "sqlInstance": "WSUS01\\SQLEXPRESS",
+    "databaseName": "SUSDB",
+    "wsusPort": 8531,
+    "wsusUseTls": true,
+    "wsusHostName": "wsus01.example.test"
+  },
+  "syncGuard": { "pollIntervalSeconds": 10, "waitSeconds": 600, "retryDelaySeconds": 60, "maxAttempts": 3, "suspendSchedule": false },
+  "backup": {
+    "enabled": true,
+    "destination": "H:\\SUSDB",
+    "sameDay": "Replace",
+    "compression": "Auto",
+    "minimumKept": 7,
+    "maximumAgeDays": 14,
+    "freeSpaceMarginPercent": 20,
+    "gate": "Required",
+    "freshnessHours": 24
+  },
+  "builtInCleanup": {
+    "declineSupersededUpdates": true,
+    "declineExpiredUpdates": true,
+    "obsoleteUpdates": true,
+    "compressUpdates": true,
+    "obsoleteComputers": false,
+    "unneededContentFiles": true,
+    "timeoutRetries": 2
+  },
+  "obsoleteUpdates": { "enabled": true, "maxDeletions": 0 },
+  "customIndexes": {
+    "enabled": true,
+    "additional": [ { "name": "nclExampleIndex", "table": "tbExample", "columns": [ "ColumnA", "ColumnB" ] } ]
+  },
+  "deleteUpdateFix": { "enabled": true },
+  "reindex": { "enabled": true },
+  "syncHistory": { "enabled": true, "retentionDays": 30 },
+  "staleComputers": {
+    "enabled": true,
+    "thresholdDays": 90,
+    "includeDownstream": false,
+    "action": "Move",
+    "targetGroup": "Stale computers",
+    "guardCount": 50,
+    "guardPercent": 10,
+    "override": false
+  },
+  "declines": {
+    "arrivalWindowDays": 0,
+    "evaluationLanguage": "en",
+    "neverDecline": [ "KB5005112", "00000000-0000-0000-0000-000000000001" ],
+    "superseded": { "enabled": true, "ageDays": 90, "lastLevelOnly": false, "includeApproved": true },
+    "accelerated": { "enabled": true, "classifications": [ "Definition Updates" ], "ageDays": 7 },
+    "expired": { "enabled": true },
+    "groups": [ { "name": "Architectures", "enabled": true } ],
+    "rules": [
+      {
+        "name": "Itanium and ARM64",
+        "enabled": true,
+        "group": "Architectures",
+        "condition": {
+          "any": [
+            { "field": "Title", "operator": "Contains", "value": "Itanium" },
+            { "field": "Title", "operator": "Match", "value": "\\bARM64\\b" },
+            { "all": [ { "field": "ProductTitles", "operator": "Like", "value": "Windows Server 2008*" }, { "not": { "field": "CreationDate", "operator": "NewerThanDays", "value": 30 } } ] },
+            { "field": "UpdateSource", "operator": "Equals", "value": "Other" }
+          ]
+        }
+      }
+    ]
+  },
+  "declinedDeletion": {
+    "enabled": false,
+    "protected": [ "KB4052623" ],
+    "excludedClassifications": [ "Security Updates" ],
+    "includedClassifications": [ "Drivers" ]
+  },
+  "iisLogs": { "enabled": true, "maxAgeDays": 90, "folder": "G:\\inetpub\\logs\\LogFiles", "siteName": "WSUS Administration" },
+  "retention": {
+    "logs": { "maxAgeDays": 90, "maxCount": 200 },
+    "reports": { "maxAgeDays": 90, "maxCount": 200 },
+    "summaries": { "maxAgeDays": 90, "maxCount": 200 }
+  },
+  "health": {
+    "tls": { "enabled": true },
+    "certificateExpiry": { "enabled": true, "warningDays": [ 60, 30, 14, 7 ] },
+    "strongCrypto": { "enabled": true },
+    "appPool": { "enabled": true, "queueLength": 2000, "idleTimeoutMinutes": 0, "pingingEnabled": false, "privateMemoryLimitKb": 0, "regularRecyclingMinutes": 0 },
+    "supersededCount": { "enabled": true, "threshold": 1500 },
+    "processorCount": { "enabled": true, "minimum": 4 }
+  },
+  "report": { "folder": "G:\\WsusMaintenance\\Reports", "formats": [ "Text", "Html" ], "maxItemsPerSection": 100 },
+  "log": { "folder": "G:\\WsusMaintenance\\Logs", "verbosity": "Information" },
+  "summary": { "folder": "G:\\WsusMaintenance\\Summaries", "format": "Json" },
+  "eventLog": {
+    "enabled": true,
+    "logName": "Application",
+    "source": "Invoke-WsusMaintenance",
+    "eventIds": {
+      "runStarted": 1000,
+      "runSucceeded": 1001,
+      "runWarning": 1002,
+      "runFailed": 1003,
+      "stageError": 1100,
+      "preconditionFailure": 1200,
+      "configurationInvalid": 1300
+    }
+  }
+}
