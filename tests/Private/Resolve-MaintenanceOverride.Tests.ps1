@@ -5,10 +5,11 @@
 Describe 'Resolve-MaintenanceOverride' {
   BeforeAll {
     . (Join-Path -Path $PSScriptRoot -ChildPath '../../build/Invoke-WsusMaintenance.Functions.ps1')
+    . (Join-Path -Path $PSScriptRoot -ChildPath '../Helpers/MaintenanceFakes.ps1')
     $script:FixtureRoot = Join-Path -Path $PSScriptRoot -ChildPath '../Fixtures/Configuration'
 
     Function script:New-Effective {
-      ConvertTo-MaintenanceEffectiveConfiguration -Document (Read-MaintenanceConfiguration -Path (Join-Path -Path $script:FixtureRoot -ChildPath 'minimal-valid.json'))
+      Get-FakeConfiguration -Json (Get-Content -LiteralPath (Join-Path -Path $script:FixtureRoot -ChildPath 'minimal-valid.json') -Raw)
     }
   }
 
@@ -16,7 +17,8 @@ Describe 'Resolve-MaintenanceOverride' {
     $Result = Resolve-MaintenanceOverride -Configuration (New-Effective)
 
     $Result.Stages | Should -HaveCount 0
-    @($Result.PSObject.Properties.Name) | Should -Be @('Configuration', 'Stages', 'Overrides', 'Errors')
+    @($Result.PSObject.Properties.Name) | Should -Be @('Configuration', 'Stages', 'RemoveCustomIndexes', 'Overrides', 'Errors')
+    $Result.RemoveCustomIndexes | Should -BeFalse
     $Result.Overrides | Should -HaveCount 0
     $Result.Errors | Should -HaveCount 0
   }
@@ -52,6 +54,28 @@ Describe 'Resolve-MaintenanceOverride' {
 
     $Result.Errors | Should -HaveCount 0
     $Result.Stages | Should -Be @('Reindex', 'Backup')
+  }
+
+  It 'runs only the custom-index stage, in its removal action, for -RemoveCustomIndexes' {
+    $Result = Resolve-MaintenanceOverride -Configuration (New-Effective) -RemoveCustomIndexes
+
+    $Result.Errors | Should -HaveCount 0
+    $Result.Stages | Should -Be @('CustomIndexes')
+    $Result.RemoveCustomIndexes | Should -BeTrue
+    $Result.Overrides | Should -Be @('custom indexes = remove the ones this script created (-RemoveCustomIndexes)')
+  }
+
+  It 'keeps the listed stages for -RemoveCustomIndexes when they include the custom-index stage' {
+    $Result = Resolve-MaintenanceOverride -Configuration (New-Effective) -RemoveCustomIndexes -Stage @('customindexes', 'Reindex')
+
+    $Result.Errors | Should -HaveCount 0
+    $Result.Stages | Should -Be @('CustomIndexes', 'Reindex')
+  }
+
+  It 'refuses -RemoveCustomIndexes with a stage list that leaves out the custom-index stage' {
+    $Result = Resolve-MaintenanceOverride -Configuration (New-Effective) -RemoveCustomIndexes -Stage @('Reindex')
+
+    $Result.Errors | Should -Be @('-RemoveCustomIndexes runs the CustomIndexes stage, so -Stage must include CustomIndexes when it is given.')
   }
 
   It 'refuses <Case>' -ForEach @(

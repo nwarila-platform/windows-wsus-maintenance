@@ -5,6 +5,42 @@
 # synchronization guard and the database helpers run on any platform. Each mirrors only the
 # members the script uses.
 
+# Effective configurations by document text. Building one walks the whole configuration
+#   catalogue, which costs about a second per call under breakpoint-based code coverage, so each
+#   distinct document is built once per test file and every caller gets its own copy to change.
+$script:FakeConfigurations = [System.Collections.Generic.Dictionary[System.String, System.Object]]::new([System.StringComparer]::Ordinal)
+
+Function Copy-FakeObject {
+  Param ($InputObject)
+
+  If ($InputObject -is [System.Management.Automation.PSCustomObject]) {
+    $Copy = [ordered]@{}
+    ForEach ($Property In $InputObject.PSObject.Properties) {
+      $Copy[$Property.Name] = Copy-FakeObject -InputObject $Property.Value
+    }
+    [PSCustomObject]$Copy
+  } ElseIf ($InputObject -is [System.Array]) {
+    $Copy = [System.Array]::CreateInstance($InputObject.GetType().GetElementType(), $InputObject.Length)
+    For ($Index = 0; $Index -lt $InputObject.Length; $Index++) {
+      $Copy[$Index] = Copy-FakeObject -InputObject $InputObject[$Index]
+    }
+    , $Copy
+  } Else {
+    $InputObject
+  }
+}
+
+# The effective configuration of a configuration document given as JSON, as a fresh copy.
+Function Get-FakeConfiguration {
+  Param ([System.String]$Json)
+
+  If ($script:FakeConfigurations.ContainsKey($Json) -eq $False) {
+    $script:FakeConfigurations[$Json] = ConvertTo-MaintenanceEffectiveConfiguration -Document ($Json | ConvertFrom-Json)
+  }
+
+  Copy-FakeObject -InputObject $script:FakeConfigurations[$Json]
+}
+
 Function New-FakeUpdateServer {
   Param (
     [System.Boolean]$IsReplica = $False,
@@ -82,12 +118,17 @@ Function New-FakeDataReader {
   $Reader
 }
 
+# A responder answers each command: it receives the command text, the parameter values (keys
+#   with their @ prefix) and whether the command is a non-query, and returns rows, a count of
+#   rows affected, or throws. Without one, every query returns -Rows and every non-query
+#   returns -Affected.
 Function New-FakeSqlConnection {
   Param (
     [System.Object[]]$Rows = @(),
     [System.Int32]$Affected = 0,
     [System.String[]]$InfoMessages = @(),
-    [System.String]$Failure = ''
+    [System.String]$Failure = '',
+    [System.Management.Automation.ScriptBlock]$Responder = $Null
   )
 
   $Connection = [PSCustomObject]@{
@@ -95,6 +136,7 @@ Function New-FakeSqlConnection {
     Affected     = $Affected
     InfoMessages = @($InfoMessages)
     Failure      = $Failure
+    Responder    = $Responder
     Handlers     = [System.Collections.Generic.List[System.Object]]::new()
     Commands     = [System.Collections.Generic.List[System.Object]]::new()
     Disposed     = 0
@@ -113,8 +155,22 @@ Function New-FakeSqlConnection {
       }
       If (-not [System.String]::IsNullOrEmpty($this.Owner.Failure)) { Throw $this.Owner.Failure }
     }
-    $Command | Add-Member -MemberType ScriptMethod -Name ExecuteReader -Value { $this.Raise(); New-FakeDataReader -Rows $this.Owner.Rows }
-    $Command | Add-Member -MemberType ScriptMethod -Name ExecuteNonQuery -Value { $this.Raise(); $this.Owner.Affected }
+    $Command | Add-Member -MemberType ScriptMethod -Name ExecuteReader -Value {
+      $this.Raise()
+      If ($Null -ne $this.Owner.Responder) {
+        New-FakeDataReader -Rows @(& $this.Owner.Responder $this.CommandText $this.Parameters.Values $False)
+      } Else {
+        New-FakeDataReader -Rows $this.Owner.Rows
+      }
+    }
+    $Command | Add-Member -MemberType ScriptMethod -Name ExecuteNonQuery -Value {
+      $this.Raise()
+      If ($Null -ne $this.Owner.Responder) {
+        & $this.Owner.Responder $this.CommandText $this.Parameters.Values $True
+      } Else {
+        $this.Owner.Affected
+      }
+    }
     $this.Commands.Add($Command)
     $Command
   }
@@ -146,4 +202,77 @@ Function New-PermissionRow {
     CanExecuteDeleteProcedure   = $CanExecuteDeleteProcedure
     CanDeleteEvents             = $CanDeleteEvents
   }
+}
+
+Function Get-FakeCommandText {
+  Param ($Connection)
+  @($Connection.Commands | ForEach-Object -Process { $PSItem.CommandText })
+}
+
+# A stage context as Invoke-MaintenanceRun builds it, around a stand-in SUSDB connection.
+Function New-FakeStageContext {
+  Param (
+    $Database,
+    [System.String]$Extra = '',
+    [System.Boolean]$DryRun = $False,
+    [System.String]$Tier = 'Autonomous',
+    $Permission = $Null,
+    $Deadline = $Null,
+    [System.Boolean]$RemoveCustomIndexes = $False,
+    $Log = $Null
+  )
+
+  $Json = '{ "schemaVersion": 1, "backup": { "destination": "H:\\Backups" }' + $Extra + ' }'
+  [PSCustomObject]@{
+    StageName           = 'Stage'
+    DryRun              = $DryRun
+    Configuration       = Get-FakeConfiguration -Json $Json
+    Deadline            = $Deadline
+    RunStart            = [System.DateTime]::new(2026, 11, 2, 1, 0, 0)
+    Log                 = $Log
+    Server              = [PSCustomObject]@{
+      Tier                  = $Tier
+      Database              = $Database
+      CommandTimeoutSeconds = 0
+      Permission            = $Permission
+      Environment           = [PSCustomObject]@{ DatabaseName = 'SUSDB' }
+    }
+    RemoveCustomIndexes = $RemoveCustomIndexes
+  }
+}
+
+# Answers every query the upkeep stages make on a healthy, already maintained SUSDB: the fix
+#   and the custom indexes are in place, nothing is obsolete, fragmented or old, and a full
+#   backup finished recently. A backup command writes a small file where it was told to.
+#   -Permission replaces the permission row; -PermissionFailure makes that query fail.
+Function New-UpkeepResponder {
+  Param (
+    $Permission = (New-PermissionRow),
+    [System.String]$PermissionFailure = ''
+  )
+
+  {
+    Param ($Text, $Parameters, $NonQuery)
+    If ($NonQuery) {
+      If ($Text -like 'BACKUP DATABASE*') {
+        [System.IO.File]::WriteAllText($Parameters['@path'], 'backup')
+      }
+      0
+    } ElseIf ($Text -match 'HAS_PERMS_BY_NAME') {
+      If ($PermissionFailure -ne '') { Throw $PermissionFailure }
+      $Permission
+    } ElseIf ($Text -match 'SERVERPROPERTY') {
+      [PSCustomObject]@{ Edition = 'Standard Edition (64-bit)'; ReservedBytes = [System.Int64]1048576 }
+    } ElseIf ($Text -match 'OBJECT_DEFINITION') {
+      [PSCustomObject]@{ Definition = "CREATE PROCEDURE dbo.spDeleteUpdate @localUpdateID int AS`nDECLARE @revisionList TABLE(RevisionID INT PRIMARY KEY)`nRETURN(0)" }
+    } ElseIf ($Text -match 'sys\.extended_properties') {
+      [PSCustomObject]@{ TableExists = 1; IndexExists = 1; CreatedByScript = 1 }
+    } ElseIf ($Text -match 'COL_LENGTH') {
+      [PSCustomObject]@{ Length = 8 }
+    } ElseIf ($Text -match 'COUNT_BIG') {
+      [PSCustomObject]@{ Total = [System.Int64]0 }
+    } ElseIf ($Text -match 'msdb') {
+      [PSCustomObject]@{ Fresh = 1; LastFinish = [System.DateTime]::new(2026, 11, 2, 0, 30, 0) }
+    }
+  }.GetNewClosure()
 }

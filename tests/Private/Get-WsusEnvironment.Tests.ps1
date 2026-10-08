@@ -5,13 +5,14 @@
 Describe 'Get-WsusEnvironment' {
   BeforeAll {
     . (Join-Path -Path $PSScriptRoot -ChildPath '../../build/Invoke-WsusMaintenance.Functions.ps1')
+    . (Join-Path -Path $PSScriptRoot -ChildPath '../Helpers/MaintenanceFakes.ps1')
     $script:Machine = [System.Environment]::MachineName
     $script:Server2022 = [PSCustomObject]@{ Platform = 'Win32NT'; Major = 10; Build = 20348 }
 
     Function script:New-Configuration {
       Param ([System.String]$Discovery = '')
       $Json = '{ "schemaVersion": 1, "backup": { "destination": "H:\\B" }' + $(If ($Discovery) { ', "discovery": ' + $Discovery } Else { '' }) + ' }'
-      ConvertTo-MaintenanceEffectiveConfiguration -Document ($Json | ConvertFrom-Json)
+      Get-FakeConfiguration -Json $Json
     }
 
     Function script:Get-Environment {

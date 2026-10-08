@@ -14,6 +14,8 @@ Describe 'Test-SusdbPermission' {
     $Permission = Test-SusdbPermission -Connection $Connection -TimeoutSeconds 0
 
     $Permission.Checked | Should -BeTrue
+    $Permission.LoginName | Should -Be 'NT AUTHORITY\SYSTEM'
+    $Permission.OwnerOrSysadmin | Should -BeTrue
     $Permission.MissingByStage.Count | Should -Be 0
     $Permission.Summary | Should -Be 'login NT AUTHORITY\SYSTEM, database owner; every stage has the permissions it needs'
     $Connection.Commands[0].CommandText | Should -Match "HAS_PERMS_BY_NAME\(DB_NAME\(\), N'DATABASE', N'BACKUP DATABASE'\)"
@@ -21,7 +23,10 @@ Describe 'Test-SusdbPermission' {
   }
 
   It 'names sysadmin standing' {
-    (Test-SusdbPermission -Connection (New-FakeSqlConnection -Rows @(New-PermissionRow -IsSysadmin 1 -IsDatabaseOwner 1))).Summary | Should -BeLike 'login NT AUTHORITY\SYSTEM, sysadmin;*'
+    $Permission = Test-SusdbPermission -Connection (New-FakeSqlConnection -Rows @(New-PermissionRow -IsSysadmin 1 -IsDatabaseOwner 0))
+
+    $Permission.Summary | Should -BeLike 'login NT AUTHORITY\SYSTEM, sysadmin;*'
+    $Permission.OwnerOrSysadmin | Should -BeTrue
   }
 
   It 'maps each missing permission to the stages that need it' {
@@ -35,7 +40,8 @@ Describe 'Test-SusdbPermission' {
     $Permission.MissingByStage['DeclinedDeletion'] | Should -Be @('EXECUTE on dbo.spDeleteUpdate')
     $Permission.MissingByStage['ObsoleteUpdates'] | Should -Be @('EXECUTE on dbo.spDeleteUpdate')
     $Permission.MissingByStage['SyncHistory'] | Should -Be @('DELETE on dbo.tbEventInstance')
-    $Permission.MissingByStage['Reindex'] | Should -Be @('database owner or sysadmin')
+    $Permission.MissingByStage.ContainsKey('Reindex') | Should -BeFalse
+    $Permission.OwnerOrSysadmin | Should -BeFalse
     $Permission.Summary | Should -BeLike 'login NT AUTHORITY\SYSTEM, neither database owner nor sysadmin; missing: BACKUP DATABASE (for Backup); *'
   }
 
@@ -46,6 +52,8 @@ Describe 'Test-SusdbPermission' {
     $Permission = Test-SusdbPermission -Connection (& $Connection)
 
     $Permission.Checked | Should -BeFalse
+    $Permission.OwnerOrSysadmin | Should -BeFalse
+    $Permission.LoginName | Should -Be ''
     $Permission.MissingByStage.Count | Should -Be 0
     $Permission.Error | Should -BeLike $Message
     $Permission.Summary | Should -BeLike 'not checked: *'

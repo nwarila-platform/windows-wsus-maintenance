@@ -10,7 +10,7 @@ Describe 'Synchronization guard' {
     Function script:New-Configuration {
       Param ([System.String]$Extra = '')
       $Json = '{ "schemaVersion": 1, "backup": { "destination": "H:\\B" }, "syncGuard": { "pollIntervalSeconds": 10, "waitSeconds": 25, "retryDelaySeconds": 60, "maxAttempts": 2 }' + $Extra + ' }'
-      ConvertTo-MaintenanceEffectiveConfiguration -Document ($Json | ConvertFrom-Json)
+      Get-FakeConfiguration -Json $Json
     }
   }
 

@@ -454,6 +454,10 @@ Function Invoke-Test {
   $PesterConfig.CodeCoverage.OutputFormat = 'JaCoCo'
   $PesterConfig.CodeCoverage.OutputPath = Join-Path -Path $BuildRoot -ChildPath 'coverage.xml'
   $PesterConfig.CodeCoverage.CoveragePercentTarget = 90
+  # Profiler-based coverage: Pester 5 measures with breakpoints by default, which makes every
+  #   covered command several times slower under Windows PowerShell 5.1; Pester 6 already uses the
+  #   profiler by default. The measured percentage is the same either way.
+  $PesterConfig.CodeCoverage.UseBreakpoints = $False
 
   $private:PesterResult = Invoke-Pester -Configuration $PesterConfig
 

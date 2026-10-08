@@ -4,8 +4,9 @@
 
 # Message(s)
 $Script:Message += @{
-  'Resolve-MaintenanceOverride.DuplicateStage' = "-Stage: '{0}' is listed more than once."
-  'Resolve-MaintenanceOverride.UnknownStage'   = "-Stage: '{0}' is not a stage name; use one of {1}."
+  'Resolve-MaintenanceOverride.DuplicateStage'   = "-Stage: '{0}' is listed more than once."
+  'Resolve-MaintenanceOverride.RemoveNeedsStage' = '-RemoveCustomIndexes runs the CustomIndexes stage, so -Stage must include CustomIndexes when it is given.'
+  'Resolve-MaintenanceOverride.UnknownStage'     = "-Stage: '{0}' is not a stage name; use one of {1}."
 }
 
 Function Resolve-MaintenanceOverride {
@@ -30,6 +31,10 @@ Function Resolve-MaintenanceOverride {
 
     .PARAMETER DryRun
         Run as a simulation.
+
+    .PARAMETER RemoveCustomIndexes
+        Drop the custom indexes this script created (and only those) instead of creating
+        missing ones; runs the CustomIndexes stage only unless -Stage lists more.
 
     .PARAMETER ReportFolder
         Report folder for this run.
@@ -93,6 +98,16 @@ Function Resolve-MaintenanceOverride {
     )]
     [System.Management.Automation.SwitchParameter]
     $DryRun,
+
+    [Parameter(
+      DontShow = $False,
+      Mandatory = $False,
+      ParameterSetName = 'default',
+      ValueFromPipeline = $False,
+      ValueFromPipelineByPropertyName = $False
+    )]
+    [System.Management.Automation.SwitchParameter]
+    $RemoveCustomIndexes,
 
     [Parameter(
       DontShow = $False,
@@ -217,6 +232,16 @@ Function Resolve-MaintenanceOverride {
     $Overrides.Add(('stages = {0} (-Stage)' -f ($Stages -join ', ')))
   }
 
+  If ($RemoveCustomIndexes.IsPresent -eq $True) {
+    If ((@($Stage).Count -gt 0) -and ($Stages.Contains('CustomIndexes') -eq $False)) {
+      $Errors.Add($Script:Message['Resolve-MaintenanceOverride.RemoveNeedsStage'])
+    } ElseIf ($Stages.Count -eq 0) {
+      $Stages.Add('CustomIndexes')
+    }
+
+    $Overrides.Add('custom indexes = remove the ones this script created (-RemoveCustomIndexes)')
+  }
+
   If (($Null -ne $Configuration) -and ($Errors.Count -eq 0)) {
     If ($DryRun.IsPresent -eq $True) {
       $Configuration.run.dryRun = $True
@@ -242,10 +267,11 @@ Function Resolve-MaintenanceOverride {
   # It's always desirable to explicitly set the Result object with its desired class as close
   #   to the soft return to ensure the output is predictable and easily traceable.
   [PSCustomObject]$Result = [PSCustomObject]@{
-    Configuration = $Configuration
-    Stages        = [System.String[]]$Stages.ToArray()
-    Overrides     = [System.String[]]$Overrides.ToArray()
-    Errors        = [System.String[]]$Errors.ToArray()
+    Configuration       = $Configuration
+    Stages              = [System.String[]]$Stages.ToArray()
+    RemoveCustomIndexes = [System.Boolean]$RemoveCustomIndexes.IsPresent
+    Overrides           = [System.String[]]$Overrides.ToArray()
+    Errors              = [System.String[]]$Errors.ToArray()
   }
 
   $Result

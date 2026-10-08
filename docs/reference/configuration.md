@@ -104,8 +104,8 @@ Conditions nest at most 16 levels. Text comparisons ignore case.
 | `backup.destination` | Path | absolute Windows path, or `null` | `null` | Folder for backup files, resolved on the database host. Required when backup is enabled. |
 | `backup.sameDay` | String | `Replace`, `Append` | `"Replace"` | Whether a second backup on the same day replaces or appends to that day's file. |
 | `backup.compression` | String | `Auto`, `Always`, `Never` | `"Auto"` | Backup compression: when the engine supports it (Auto), always, or never. |
-| `backup.minimumKept` | Integer | 0 to 1000 files | `7` | Most recent backup files always kept. |
-| `backup.maximumAgeDays` | Integer | 0 to 3650 days | `7` | Backup files older than this and outside the most recent set are deleted. |
+| `backup.minimumKept` | Integer | 0 to 1000 files | `7` | Most recent backup files always kept. Zero means no minimum; with both limits zero every file is kept. |
+| `backup.maximumAgeDays` | Integer | 0 to 3650 days | `7` | Backup files this many days old or older, by the date in their name, and outside the most recent set are deleted. Zero means no age limit. |
 | `backup.freeSpaceMarginPercent` | Integer | 0 to 1000 percent | `20` | Free space required on the destination beyond the estimated backup size. |
 | `backup.gate` | String | `Required`, `Advisory`, `Off` | `"Required"` | Whether stages that delete or alter SUSDB content require a recent successful backup. |
 | `backup.freshnessHours` | Integer | 1 to 8760 hours | `24` | How recent a backup must be to satisfy the backup gate. |

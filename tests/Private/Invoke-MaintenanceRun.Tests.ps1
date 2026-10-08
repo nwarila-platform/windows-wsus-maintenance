@@ -5,11 +5,13 @@
 Describe 'Invoke-MaintenanceRun' {
   BeforeAll {
     . (Join-Path -Path $PSScriptRoot -ChildPath '../../build/Invoke-WsusMaintenance.Functions.ps1')
+    . (Join-Path -Path $PSScriptRoot -ChildPath '../Helpers/MaintenanceFakes.ps1')
 
+    # The backup gate is off unless a test sets it, so that stand-in stages run unconditionally.
     Function script:New-Configuration {
-      Param ([System.String]$Extra = '')
-      $Json = '{ "schemaVersion": 1, "backup": { "destination": "H:\\B" }' + $Extra + ' }'
-      ConvertTo-MaintenanceEffectiveConfiguration -Document ($Json | ConvertFrom-Json)
+      Param ([System.String]$Extra = '', [System.String]$Gate = 'Off')
+      $Json = '{ "schemaVersion": 1, "backup": { "destination": "H:\\B", "gate": "' + $Gate + '" }' + $Extra + ' }'
+      Get-FakeConfiguration -Json $Json
     }
 
     Function script:Invoke-Run {
@@ -71,7 +73,8 @@ Describe 'Invoke-MaintenanceRun' {
 
     $Null = Invoke-Run -Configuration (New-Configuration)
 
-    @($script:Contexts[0].PSObject.Properties.Name) | Should -Be @('StageName', 'DryRun', 'Configuration', 'Deadline', 'RunStart', 'Log', 'Server')
+    @($script:Contexts[0].PSObject.Properties.Name) | Should -Be @('StageName', 'DryRun', 'Configuration', 'Deadline', 'RunStart', 'Log', 'Server', 'RemoveCustomIndexes')
+    $script:Contexts[0].RemoveCustomIndexes | Should -BeFalse
   }
 
   It 'collects the notices stages raise into the run notices' {
@@ -190,5 +193,92 @@ Describe 'Invoke-MaintenanceRun' {
     $Run.Outcomes[-1].Name | Should -Be 'BuiltInCleanup'
     $Run.Notices[-1].Severity | Should -Be 'Error'
     $Run.Notices[-1].Message | Should -Be 'The run stopped early because of an unexpected error: Unexpected engine failure.'
+  }
+
+  It 'passes the removal action for the custom indexes to the stages' {
+    $script:Contexts = [System.Collections.Generic.List[PSCustomObject]]::new()
+    Mock -CommandName Get-MaintenanceStageHandler -MockWith {
+      {
+        Param ($Context)
+        $script:Contexts.Add($Context)
+        [PSCustomObject]@{ Status = 'Success' }
+      }
+    }
+
+    $Null = Invoke-Run -Configuration (New-Configuration) -Extra @{ Stage = @('CustomIndexes'); RemoveCustomIndexes = $True }
+
+    $script:Contexts | Should -HaveCount 1
+    $script:Contexts[0].RemoveCustomIndexes | Should -BeTrue
+  }
+
+  Context 'backup gate' {
+    BeforeAll {
+      $script:Altering = @(Get-MaintenanceStageCatalog | Where-Object -FilterScript { $PSItem.AltersDatabase }).Name
+    }
+
+    It 'skips every stage that alters SUSDB, with a High notice, when the gate is required and no backup is recent' {
+      Mock -CommandName Test-BackupGate -MockWith { [PSCustomObject]@{ Satisfied = $False; Mode = 'Required'; Detail = 'no backup in this run and none recorded in the last 24 hour(s)' } }
+      $Log = New-MaintenanceLog -Folder (Join-Path -Path $TestDrive -ChildPath 'gate-closed') -RunId 'RUN' -Verbosity 'Information'
+
+      $Run = Invoke-Run -Configuration (New-Configuration -Gate 'Required') -Extra @{ Log = $Log }
+
+      ForEach ($Name In @('CustomIndexes', 'DeleteUpdateFix', 'ObsoleteUpdates', 'BuiltInCleanup', 'SyncHistory', 'StaleComputers')) {
+        $Outcome = $Run.Outcomes | Where-Object -FilterScript { $PSItem.Name -eq $Name }
+        $Outcome.Status | Should -Be 'Skipped' -Because $Name
+        $Outcome.Reason | Should -Be 'skipped: no recent backup' -Because $Name
+      }
+      $script:Invoked | Should -Not -Contain 'ObsoleteUpdates:False'
+      $script:Invoked | Should -Contain 'Backup:False'
+      $script:Invoked | Should -Contain 'Reindex:False'
+      $Run.Notices | Should -HaveCount 1
+      $Run.Notices[0].Severity | Should -Be 'High'
+      $Run.Notices[0].Message | Should -Be 'No recent SUSDB backup (no backup in this run and none recorded in the last 24 hour(s)); the stages that delete or alter SUSDB content are skipped (backup.gate is Required).'
+      Should -Invoke -CommandName Test-BackupGate -Times 1 -Exactly
+      (Get-Content -LiteralPath $Log.Path -Raw) | Should -Match 'Backup gate closed: no backup in this run'
+      (Get-Content -LiteralPath $Log.Path -Raw) | Should -Match 'SyncHistory: Stage skipped: skipped: no recent backup'
+    }
+
+    It 'evaluates the gate after the backup stage, with what that stage reported' {
+      $script:SeenOutcome = $Null
+      Mock -CommandName Get-MaintenanceStageHandler -ParameterFilter { $Name -eq 'Backup' } -MockWith {
+        { [PSCustomObject]@{ Status = 'Success'; Counts = [ordered]@{ Created = 1; WouldCreate = 0 } } }
+      }
+      Mock -CommandName Test-BackupGate -MockWith {
+        $script:SeenOutcome = $Outcome
+        [PSCustomObject]@{ Satisfied = $True; Mode = 'Required'; Detail = 'backup made by this run' }
+      }
+      $Log = New-MaintenanceLog -Folder (Join-Path -Path $TestDrive -ChildPath 'gate-open') -RunId 'RUN' -Verbosity 'Information'
+
+      $Run = Invoke-Run -Configuration (New-Configuration -Gate 'Required') -Extra @{ Log = $Log }
+
+      @($script:SeenOutcome).Name | Should -Be @('Backup')
+      $script:Invoked | Should -Contain 'ObsoleteUpdates:False'
+      $Run.Notices | Should -HaveCount 0
+      (Get-Content -LiteralPath $Log.Path -Raw) | Should -Match 'Backup gate open: backup made by this run\.'
+    }
+
+    It 'runs the altering stages with a Warning notice when the gate is advisory' {
+      Mock -CommandName Test-BackupGate -MockWith { [PSCustomObject]@{ Satisfied = $False; Mode = 'Advisory'; Detail = 'no backup' } }
+
+      $Run = Invoke-Run -Configuration (New-Configuration -Gate 'Advisory')
+
+      $script:Invoked | Should -HaveCount 13
+      $Run.Notices | Should -HaveCount 1
+      $Run.Notices[0].Severity | Should -Be 'Warning'
+      $Run.Notices[0].Message | Should -BeLike 'No recent SUSDB backup (no backup); the stages that delete or alter SUSDB content run anyway*'
+    }
+
+    It 'is not evaluated when it is off or when no altering stage runs' {
+      Mock -CommandName Test-BackupGate -MockWith { [PSCustomObject]@{ Satisfied = $False; Mode = 'Required'; Detail = 'no backup' } }
+
+      $Null = Invoke-Run -Configuration (New-Configuration)
+      $Null = Invoke-Run -Configuration (New-Configuration -Gate 'Required') -Extra @{ Stage = @('Reindex') }
+
+      Should -Invoke -CommandName Test-BackupGate -Times 0 -Exactly
+    }
+
+    It 'lists the stages it guards in the catalogue' {
+      $script:Altering | Should -Be @('CustomIndexes', 'DeleteUpdateFix', 'DeclinedDeletion', 'ObsoleteUpdates', 'BuiltInCleanup', 'SyncHistory', 'StaleComputers')
+    }
   }
 }

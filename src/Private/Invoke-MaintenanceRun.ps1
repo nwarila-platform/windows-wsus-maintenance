@@ -4,10 +4,14 @@
 
 # Message(s)
 $Script:Message += @{
-  'Invoke-MaintenanceRun.Budget'     = 'Time budget of {0} minute(s) reached; {1} stage(s) did not run and will run next time: {2}.'
-  'Invoke-MaintenanceRun.Permission' = 'Stage {0} is skipped because the run identity lacks {1} in SUSDB.'
-  'Invoke-MaintenanceRun.Skipped'    = 'Stage skipped: {0}.'
-  'Invoke-MaintenanceRun.Unexpected' = 'The run stopped early because of an unexpected error: {0}'
+  'Invoke-MaintenanceRun.Budget'       = 'Time budget of {0} minute(s) reached; {1} stage(s) did not run and will run next time: {2}.'
+  'Invoke-MaintenanceRun.GateAdvisory' = 'No recent SUSDB backup ({0}); the stages that delete or alter SUSDB content run anyway because backup.gate is Advisory.'
+  'Invoke-MaintenanceRun.GateClosed'   = 'No recent SUSDB backup ({0}); the stages that delete or alter SUSDB content are skipped (backup.gate is Required).'
+  'Invoke-MaintenanceRun.GateLog'      = 'Backup gate {0}: {1}.'
+  'Invoke-MaintenanceRun.GateReason'   = 'skipped: no recent backup'
+  'Invoke-MaintenanceRun.Permission'   = 'Stage {0} is skipped because the run identity lacks {1} in SUSDB.'
+  'Invoke-MaintenanceRun.Skipped'      = 'Stage skipped: {0}.'
+  'Invoke-MaintenanceRun.Unexpected'   = 'The run stopped early because of an unexpected error: {0}'
 }
 
 Function Invoke-MaintenanceRun {
@@ -24,7 +28,10 @@ Function Invoke-MaintenanceRun {
         outcome gathered so far; this function never throws for it. The server facts from
         discovery gate the plan (replica, unknown tier, missing permissions); each stage skipped
         for a missing permission raises a Warning notice before the first stage starts, and
-        every handler receives the server facts in its context.
+        every handler receives the server facts in its context. Before the first stage that deletes
+        or alters SUSDB content, the backup gate is evaluated once (Test-BackupGate): when it is
+        Required and closed those stages are skipped with "skipped: no recent backup" and a High
+        notice; when it is Advisory they run and a Warning notice is raised.
 
     .PARAMETER Configuration
         Effective configuration.
@@ -32,6 +39,10 @@ Function Invoke-MaintenanceRun {
     .PARAMETER Log
         The run log, or null. Stage starts, ends, errors and items are written to it, and
         stage handlers receive it in their context to log their progress.
+
+    .PARAMETER RemoveCustomIndexes
+        Make the CustomIndexes stage drop the indexes this script created instead of creating
+        missing ones.
 
     .PARAMETER RunStart
         The run's start time, local.
@@ -83,6 +94,16 @@ Function Invoke-MaintenanceRun {
 
     [Parameter(
       DontShow = $False,
+      Mandatory = $False,
+      ParameterSetName = 'default',
+      ValueFromPipeline = $False,
+      ValueFromPipelineByPropertyName = $False
+    )]
+    [System.Boolean]
+    $RemoveCustomIndexes = $False,
+
+    [Parameter(
+      DontShow = $False,
       Mandatory = $True,
       ParameterSetName = 'default',
       ValueFromPipeline = $False,
@@ -117,7 +138,9 @@ Function Invoke-MaintenanceRun {
   Write-Debug -Message:'[Invoke-MaintenanceRun] Entering'
 
   # Initialize Variable(s)
+  [System.Boolean]$Private:Blocked = $False
   [PSCustomObject]$Private:Context = $Null
+  [PSCustomObject]$Private:Gate = $Null
   [System.Object]$Private:Deadline = $Null
   [System.Boolean]$Private:DryRun = [System.Boolean]$Configuration.run.dryRun
   [System.Collections.Generic.List[System.String]]$Private:NotRunNames = $Null
@@ -157,14 +180,38 @@ Function Invoke-MaintenanceRun {
         $Outcome = New-MaintenanceStageOutcome -Reason:$Entry.Reason -Stage:$Entry -Status:'Skipped'
         Write-MaintenanceLog -Level:'Information' -Log:$Log -Message:($Script:Message['Invoke-MaintenanceRun.Skipped'] -f $Entry.Reason) -Stage:$Entry.Name
       } Else {
+        $Blocked = $False
+        If (($Entry.AltersDatabase -eq $True) -and ($Configuration.backup.gate -ne 'Off')) {
+          If ($Null -eq $Gate) {
+            $Gate = Test-BackupGate -Configuration:$Configuration -Log:$Log -Outcome:$Outcomes.ToArray() -Server:$Server
+            If ($Gate.Satisfied -eq $True) {
+              Write-MaintenanceLog -Level:'Information' -Log:$Log -Message:($Script:Message['Invoke-MaintenanceRun.GateLog'] -f 'open', $Gate.Detail)
+            } ElseIf ($Gate.Mode -eq 'Required') {
+              Write-MaintenanceLog -Level:'Warning' -Log:$Log -Message:($Script:Message['Invoke-MaintenanceRun.GateLog'] -f 'closed', $Gate.Detail)
+              $Notices.Add((New-MaintenanceNotice -Message:($Script:Message['Invoke-MaintenanceRun.GateClosed'] -f $Gate.Detail) -Severity:'High'))
+            } Else {
+              Write-MaintenanceLog -Level:'Warning' -Log:$Log -Message:($Script:Message['Invoke-MaintenanceRun.GateLog'] -f 'advisory', $Gate.Detail)
+              $Notices.Add((New-MaintenanceNotice -Message:($Script:Message['Invoke-MaintenanceRun.GateAdvisory'] -f $Gate.Detail) -Severity:'Warning'))
+            }
+          }
+
+          $Blocked = ($Gate.Satisfied -eq $False) -and ($Gate.Mode -eq 'Required')
+        }
+      }
+
+      If (($Entry.Mode -ne 'Skip') -and ($Blocked -eq $True)) {
+        $Outcome = New-MaintenanceStageOutcome -Reason:$Script:Message['Invoke-MaintenanceRun.GateReason'] -Stage:$Entry -Status:'Skipped'
+        Write-MaintenanceLog -Level:'Warning' -Log:$Log -Message:($Script:Message['Invoke-MaintenanceRun.Skipped'] -f $Script:Message['Invoke-MaintenanceRun.GateReason']) -Stage:$Entry.Name
+      } ElseIf ($Entry.Mode -ne 'Skip') {
         $Context = [PSCustomObject]@{
-          StageName     = [System.String]$Entry.Name
-          DryRun        = [System.Boolean]$DryRun
-          Configuration = $Configuration
-          Deadline      = $Deadline
-          RunStart      = $RunStart
-          Log           = $Log
-          Server        = $Server
+          StageName           = [System.String]$Entry.Name
+          DryRun              = [System.Boolean]$DryRun
+          Configuration       = $Configuration
+          Deadline            = $Deadline
+          RunStart            = $RunStart
+          Log                 = $Log
+          Server              = $Server
+          RemoveCustomIndexes = [System.Boolean]$RemoveCustomIndexes
         }
         $Outcome = Invoke-MaintenanceStage -Context:$Context -Handler:(Get-MaintenanceStageHandler -Name:$Entry.Name) -Log:$Log -Stage:$Entry
       }

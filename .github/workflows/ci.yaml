@@ -158,7 +158,7 @@ jobs:
   build:
     name: build (windows-powershell51)
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:

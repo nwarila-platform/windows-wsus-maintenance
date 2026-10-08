@@ -49,7 +49,14 @@ Function Get-MaintenanceStageHandler {
   Write-Debug -Message:'[Get-MaintenanceStageHandler] Entering'
 
   # Initialize Variable(s)
-  [System.Collections.Hashtable]$Private:Handlers = @{}
+  [System.Collections.Hashtable]$Private:Handlers = @{
+    Backup          = { Param ($Context) Backup-Susdb -Context:$Context }
+    CustomIndexes   = { Param ($Context) Set-SusdbCustomIndex -Context:$Context }
+    DeleteUpdateFix = { Param ($Context) Set-DeleteUpdateProcedureFix -Context:$Context }
+    ObsoleteUpdates = { Param ($Context) Invoke-ObsoleteUpdateCleanup -Context:$Context }
+    SyncHistory     = { Param ($Context) Remove-SyncHistory -Context:$Context }
+    Reindex         = { Param ($Context) Invoke-SusdbIndexMaintenance -Context:$Context }
+  }
   [System.Management.Automation.ScriptBlock]$Private:Result = $Null
 
   If ($Handlers.ContainsKey($Name) -eq $True) {

@@ -2,6 +2,10 @@
 # SPDX-FileCopyrightText: 2026 Nicholas Warila
 # SPDX-License-Identifier: MIT
 
+BeforeDiscovery {
+  $script:CanValidate = $Null -ne (Get-Command -Name 'Test-Json' -ErrorAction SilentlyContinue)
+}
+
 Describe 'Invoke-WsusMaintenance' {
   BeforeAll {
     . (Join-Path -Path $PSScriptRoot -ChildPath '../../build/Invoke-WsusMaintenance.Functions.ps1')
@@ -47,13 +51,14 @@ Describe 'Invoke-WsusMaintenance' {
     $script:Events = [System.Collections.Generic.List[PSCustomObject]]::new()
     Mock -CommandName Test-MaintenanceElevation -MockWith { $True }
     $script:UpdateServer = New-FakeUpdateServer
-    $script:Database = New-FakeSqlConnection -Rows @(New-PermissionRow)
+    $script:Database = New-FakeSqlConnection -Responder (New-UpkeepResponder)
     Mock -CommandName Get-MaintenanceIdentity -MockWith { 'NT AUTHORITY\SYSTEM' }
     Mock -CommandName Get-MaintenanceOperatingSystem -MockWith { [PSCustomObject]@{ Platform = 'Win32NT'; Major = 10; Build = 20348 } }
     Mock -CommandName Get-WsusSetupValue -MockWith { [PSCustomObject]@{ SqlServerName = [System.Environment]::MachineName; SqlDatabaseName = 'SUSDB' } }
     Mock -CommandName Get-WsusUpdateServer -MockWith { $script:UpdateServer }
     Mock -CommandName New-SqlConnection -MockWith { $script:Database }
     Mock -CommandName Wait-MaintenanceInterval -MockWith { }
+    Mock -CommandName Get-BackupDestinationSpace -MockWith { [System.Int64]100GB }
     Mock -CommandName New-MaintenanceLock -MockWith { $script:Lock }
     Mock -CommandName Get-MaintenanceTime -MockWith { [System.DateTime]::new(2026, 11, 2, 2, 0, 0) }
     Mock -CommandName New-MaintenanceRunId -MockWith { $script:RunId }
@@ -93,7 +98,9 @@ Describe 'Invoke-WsusMaintenance' {
     $Result.Status | Should -Be 'Success'
     $Result.ExitCode | Should -Be 0
     $Result.Stages | Should -HaveCount 16
-    @($Result.Stages | Where-Object -FilterScript { $PSItem.Reason -eq 'not available in this release' }) | Should -HaveCount 13
+    @($Result.Stages | Where-Object -FilterScript { $PSItem.Status -eq 'Success' }).Name | Should -Be @('Backup', 'CustomIndexes', 'DeleteUpdateFix', 'ObsoleteUpdates', 'SyncHistory', 'Reindex')
+    @($Result.Stages | Where-Object -FilterScript { $PSItem.Reason -eq 'not available in this release' }) | Should -HaveCount 7
+    Test-Path -LiteralPath (Join-Path -Path (Get-OutputFolder -Configured 'H:\SUSDB') -ChildPath 'SUSDB_20261102.bak') | Should -BeTrue
     $Result.Run.RunId | Should -Be $script:RunId
     $Result.Run.Stages | Should -HaveCount 0
     $Result.Run.StartedAt | Should -Be ([System.DateTime]::new(2026, 11, 2, 2, 0, 0))
@@ -157,9 +164,44 @@ Describe 'Invoke-WsusMaintenance' {
     $Result.Run.Stages | Should -Be @('Reindex')
     $Result.Validation.Overrides | Should -Contain 'run.dryRun = true (-DryRun)'
     $Result.Validation.Overrides | Should -Contain 'stages = Reindex (-Stage)'
-    @($Result.Stages | Where-Object -FilterScript { $PSItem.Reason -eq 'not available in this release' }).Name | Should -Be @('Reindex')
+    ($Result.Stages | Where-Object -FilterScript { $PSItem.Name -eq 'Reindex' }).Message | Should -Be 'Would defragment 0 index(es) and then update statistics.'
+    @(Get-FakeCommandText -Connection $script:Database | Where-Object -FilterScript { $PSItem -match '^(?:ALTER|EXEC|DELETE|BACKUP|CREATE|DROP)' }) | Should -HaveCount 0
     $Result.Run.Artifacts.Reports | Should -Be @(Get-Artifact -Configured 'D:\Reports' -Extension 'txt')
     (Get-Content -LiteralPath $Result.Run.Artifacts.Reports[0] -Raw) | Should -Match 'Profile\s+: stage list: Reindex'
+  }
+
+  It 'writes a summary of the upkeep stages that validates against its schema' -Skip:(-not $script:CanValidate) {
+    $Result = Invoke-WsusMaintenance -ConfigPath (Join-Path -Path $script:FixtureRoot -ChildPath 'minimal-valid.json')
+
+    $Schema = Join-Path -Path $PSScriptRoot -ChildPath '../../docs/reference/summary.schema.json'
+    Test-Json -Json (Get-Content -LiteralPath $Result.Run.Artifacts.Summary -Raw) -SchemaFile $Schema | Should -BeTrue
+  }
+
+  It 'sends SUSDB nothing but reads in a dry run of every stage' {
+    $Result = Invoke-WsusMaintenance -ConfigPath (Join-Path -Path $script:FixtureRoot -ChildPath 'minimal-valid.json') -DryRun
+
+    $Result.Status | Should -Be 'Success'
+    $Commands = @(Get-FakeCommandText -Connection $script:Database)
+    $Commands | Should -Not -HaveCount 0
+    ForEach ($Text In $Commands) {
+      $Text | Should -Match '^(?:SELECT\b|WITH Fragmented AS \(|EXEC dbo\.spGetObsoleteUpdatesToCleanup$)' -Because 'a dry run only reads'
+      $Text | Should -Not -Match '(?im)^\s*(?:DELETE|INSERT|UPDATE|MERGE|ALTER|CREATE|DROP|BACKUP|TRUNCATE)\b' -Because 'a dry run only reads'
+    }
+    ($Result.Stages | Where-Object -FilterScript { $PSItem.Name -eq 'Backup' }).Counts.WouldCreate | Should -Be 1
+    Test-Path -LiteralPath (Get-OutputFolder -Configured 'H:\SUSDB') | Should -BeFalse
+  }
+
+  It 'runs only the custom-index stage and drops the indexes it created for -RemoveCustomIndexes' {
+    $Result = Invoke-WsusMaintenance -ConfigPath (Join-Path -Path $script:FixtureRoot -ChildPath 'minimal-valid.json') -RemoveCustomIndexes
+
+    $Result.Status | Should -Be 'Success'
+    $Result.Run.Stages | Should -Be @('CustomIndexes')
+    $Result.Validation.Overrides | Should -Contain 'custom indexes = remove the ones this script created (-RemoveCustomIndexes)'
+    ($Result.Stages | Where-Object -FilterScript { $PSItem.Name -eq 'CustomIndexes' }).Message | Should -Be 'Created 0 and removed 2 index(es); 0 already present; 0 failed.'
+    @(Get-FakeCommandText -Connection $script:Database | Where-Object -FilterScript { $PSItem -like 'DROP INDEX*' }) | Should -Be @(
+      'DROP INDEX [nclLocalizedPropertyID] ON [dbo].[tbLocalizedPropertyForRevision]'
+      'DROP INDEX [nclSupercededUpdateID] ON [dbo].[tbRevisionSupersedesUpdate]'
+    )
   }
 
   It 'saves a report to the default folder, with a warning, when the report folder cannot be used' {
@@ -223,7 +265,7 @@ Describe 'Invoke-WsusMaintenance' {
     }
 
     It 'skips the backup with a notice before any other work when the backup right is missing' {
-      $script:Database = New-FakeSqlConnection -Rows @(New-PermissionRow -CanBackup 0)
+      $script:Database = New-FakeSqlConnection -Responder (New-UpkeepResponder -Permission (New-PermissionRow -CanBackup 0))
 
       $Result = Invoke-Minimal
 
@@ -236,7 +278,7 @@ Describe 'Invoke-WsusMaintenance' {
     }
 
     It 'warns when the database permissions cannot be checked' {
-      $script:Database = New-FakeSqlConnection -Failure 'VIEW SERVER STATE permission was denied.'
+      $script:Database = New-FakeSqlConnection -Responder (New-UpkeepResponder -PermissionFailure 'VIEW SERVER STATE permission was denied.')
 
       $Result = Invoke-Minimal
 

@@ -11,7 +11,7 @@ Describe 'Connect-MaintenanceServer' {
     Function script:New-Configuration {
       Param ([System.String]$Discovery = '')
       $Json = '{ "schemaVersion": 1, "backup": { "destination": "H:\\B" }, "run": { "connectionTimeoutSeconds": 45 }, "declines": { "evaluationLanguage": "de" }' + $(If ($Discovery) { ', "discovery": ' + $Discovery } Else { '' }) + ' }'
-      ConvertTo-MaintenanceEffectiveConfiguration -Document ($Json | ConvertFrom-Json)
+      Get-FakeConfiguration -Json $Json
     }
   }
 

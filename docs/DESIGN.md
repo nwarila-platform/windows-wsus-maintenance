@@ -9,7 +9,7 @@ repository itself.
 The decided behaviour and defaults are stated here and in the repository's architecture decision
 records ([decision-records](decision-records/README.md)).
 
-Status date: 2026-10-07 (M0 to M4 complete; run control reworked for one nightly run of every
+Status date: 2026-10-07 (M0 to M5 complete; run control reworked for one nightly run of every
 stage).
 
 ---
@@ -114,6 +114,7 @@ Pester `Mock`. The seams, delivered and planned:
 | `Get-WsusSetupValue` (M4) | `HKLM:\SOFTWARE\Microsoft\Update Services\Server\Setup` |
 | `Get-MaintenanceOperatingSystem`, `Get-MaintenanceIdentity` (M4) | The operating-system build and the run identity |
 | `Wait-MaintenanceInterval` (M4) | `Start-Sleep`, so the synchronization guard can be tested without waiting |
+| `Get-BackupDestinationSpace` (M5) | `System.IO.DriveInfo`: the free space of the volume holding the backup folder |
 | ACL, HTTP.sys binding, IIS and registry-view readers | Health and folder-protection checks |
 
 Lessons already learned in this code base:
@@ -147,6 +148,10 @@ Lessons already learned in this code base:
   (`tests/Helpers/MaintenanceFakes.ps1`) instead of mocking every call.
 - `GetNewClosure()` does not capture `$Private:` variables. The InfoMessage handler is therefore
   built by `New-SusdbMessageHandler` around its parameter.
+- A .NET property getter that throws (for example `FileInfo.Length` of a missing file) gives
+  `$null` in an expression instead of an error, so code checks `Exists` first.
+- `Sort-Object` compares strings by culture, which orders `-` and `_` differently on different
+  platforms; tests that compare file lists sort them ordinally.
 
 ### 3.4 Quality gates, release and provenance
 
@@ -213,7 +218,8 @@ Paths:
 |---|---|
 | `-ConfigPath` | Configuration document. Defaults to `%ProgramData%\NWarila\WsusMaintenance\maintenance.json`. |
 | `-Stage` | Run only the listed stages, still in catalogue order; without it every enabled stage runs. Names are matched without regard to case and recorded in their canonical spelling. This is how a hierarchy runs declines and cleanup separately (REQ-043). The onboarding profile is deferred. |
-| `-DryRun` | Simulate: every stage applies its selection logic and reports what it would change. |
+| `-DryRun` | Simulate: every stage applies its selection logic and reports what it would change; SUSDB receives only reads. |
+| `-RemoveCustomIndexes` | Drop the custom indexes this script created, and only those, instead of creating missing ones. Runs the `CustomIndexes` stage alone unless `-Stage` is given, which must then include `CustomIndexes`. |
 | `-ReportFolder`, `-ReportFormat` | One-run report destination and formats. |
 | `-Verbosity` | One-run log verbosity. |
 | `-ValidateOnly` | Validate the configuration and the options, then stop. |
@@ -244,8 +250,9 @@ Order of a run (M2):
    with `PreconditionFailed`, after restoring what the guard changed.
 10. Write the run-started event, build the stage plan (every enabled stage, or the `-Stage` list,
     in catalogue order, gated by tier and permissions) and run each stage in its own error
-    boundary within the time budget. A stage the budget stops from starting is reported as
-    `NotRun` with a warning and runs on the next night.
+    boundary within the time budget. Before the first stage that deletes or alters SUSDB content,
+    the backup gate is evaluated once (section 10, M5). A stage the budget stops from starting is
+    reported as `NotRun` with a warning and runs on the next night.
 11. Restart the synchronization the guard stopped and restore the schedule it suspended; close
     the SUSDB connection and release the lock, on every path. Nothing is stored between runs.
 12. Save the report and the summary, log the notices, and write a stage-error event per failed
@@ -382,7 +389,7 @@ replica setting.
 
 | Capability | Top tier | Autonomous downstream | Replica downstream |
 |---|---|---|---|
-| Backup, custom indexes, spDeleteUpdate fix, obsolete deletion, re-index, sync history | Runs | Runs | Runs; a database refusal is reported as "rejected by server role" (warning) |
+| Backup, custom indexes, spDeleteUpdate fix, obsolete deletion, re-index, sync history | Runs | Runs | Runs; a refused obsolete-update deletion is reported as "rejected by server role" (warning) and ends that stage (to measure: what a replica refuses) |
 | Built-in cleanup: non-decline options | Runs | Runs | Runs (to measure: which options a replica accepts) |
 | Built-in cleanup: superseded and expired declines | Runs | Runs | Suppressed: "skipped: replica" |
 | Decline policies (REQ-010 to REQ-016) | Runs | Runs | Skipped: "skipped: replica" |
@@ -502,7 +509,7 @@ Notes on scope:
 | M2 | Run control: stage plan and ordering, lock, elevation, stage error boundary and budget, status resolution, dry-run plumbing | 040, 042, 043, 045, 047, 048, 050, 055, 077, 096, 098 | **Done** (gate green, 2026-10-06; reworked for one daily run, 2026-10-07) |
 | M3 | Reporting and observability: report, text and HTML renderers, summary and schema, run log with redaction, events, failure reports | 060–062, 069, 071, 072, 074, 075, 091 | **Done** (gate green, 2026-10-07) |
 | M4 | Discovery and preconditions: seams, environment and tier, permissions, sync guard and restart | 025, 044, 051–053, 090, 095, 097 | **Done** (gate green, 2026-10-07) |
-| M5 | SUSDB upkeep: indexes, procedure fix, obsolete deletion, re-index and statistics, sync history, backup, retention, gate, free space | 001, 020–024, 027, 056–058, 075 | Planned |
+| M5 | SUSDB upkeep: indexes, procedure fix, obsolete deletion, re-index and statistics, sync history, backup, retention, gate, free space | 001, 020–024, 027, 056–058, 075 | **Done** (gate green, 2026-10-07) |
 | M6 | WSUS API cleanup and stale computers | 002, 003, 034, 057 | Planned |
 | M7 | Decline engine | 004, 010–016 | Planned |
 | M8 | Lifecycle automation: needed-update approval with per-group delays and deadlines, content pre-staging, late-content warning, exclusions, licences | LCA-01 to LCA-09 (section 11) | Planned (decided) |
@@ -566,30 +573,124 @@ missing backup right skips the backup with a notice before any stage starts; an 
 synchronization status counts as a failed attempt; a replica skips every decline stage with
 "skipped: replica".
 
-Notes for M5 onwards:
+What M5 delivered: the stage functions `Backup-Susdb`, `Set-SusdbCustomIndex`,
+`Set-DeleteUpdateProcedureFix`, `Invoke-ObsoleteUpdateCleanup`, `Remove-SyncHistory` and
+`Invoke-SusdbIndexMaintenance`, registered in `Get-MaintenanceStageHandler`; the helpers
+`ConvertTo-DeleteUpdateFix`, `Get-SusdbIndexAction`, `Remove-BackupFile`, `Test-BackupGate`,
+`New-MaintenanceStageResult`, `Get-SusdbConnection` and `ConvertTo-SqlIdentifier`; the seam
+`Get-BackupDestinationSpace`; the backup gate in `Invoke-MaintenanceRun`; and the
+`-RemoveCustomIndexes` option. The stages:
+
+- **Backup** (REQ-020, 021, 058). `BACKUP DATABASE` to
+  `backup.destination\<database>_<yyyyMMdd>.bak` `WITH CHECKSUM`, `INIT` when `backup.sameDay` is
+  `Replace` and `NOINIT` when it is `Append`, under the backup-set name
+  `<database> full backup <date> <time>`. Compression follows `backup.compression`: `Auto`
+  compresses on the Enterprise, Standard and Developer editions, which support it ([backup
+  compression][compression]), and not otherwise. The folder is created when missing. Before the
+  backup, its size is estimated from the database's reserved pages (`sys.dm_db_partition_stats`),
+  and the destination must have that much free space plus `backup.freeSpaceMarginPercent`;
+  otherwise the backup is skipped with a High notice. When the free space cannot be read, the
+  backup is attempted with an Information notice. A failed backup is a stage error with a High
+  notice. Only after a successful backup does the retention run, over the top-level files named
+  `<database>_<yyyyMMdd>.bak`: the `backup.minimumKept` newest are always kept and, of the others,
+  each whose name date is `backup.maximumAgeDays` or more days old is deleted; when one limit is
+  zero the other applies alone, and when both are zero every file is kept with an Information
+  notice. Other files and sub-folders are never touched; a file that cannot be deleted is a
+  Warning notice.
+- **Backup gate** (REQ-056). Evaluated once, before the first stage whose catalogue entry has
+  `AltersDatabase`. It is satisfied by a backup this run made (in a dry run, one it would make),
+  or else by a full backup of the database recorded in `msdb.dbo.backupset` that finished within
+  `backup.freshnessHours`. When `backup.gate` is `Required` and it is not satisfied, each such
+  stage is skipped with "skipped: no recent backup" and one High notice is raised; `Advisory` runs
+  them with a Warning notice; `Off` skips the evaluation. The run log records the outcome.
+- **CustomIndexes** (REQ-022). On every run, checks `nclLocalizedPropertyID` on
+  `dbo.tbLocalizedPropertyForRevision (LocalizedPropertyID)`, `nclSupercededUpdateID` on
+  `dbo.tbRevisionSupersedesUpdate (SupersededUpdateID)` ([guide], "Create custom indexes") and
+  each `customIndexes.additional` entry. A missing index is created as a non-clustered index and
+  tagged with the extended property `CreatedBy = Invoke-WsusMaintenance`; an existing one is
+  reported as already present and left alone. With `-RemoveCustomIndexes` only tagged indexes are
+  dropped; an untagged index of the same name is kept and reported. A failure is a Warning notice
+  per index.
+- **DeleteUpdateFix** (REQ-023). Reads `OBJECT_DEFINITION` of `dbo.spDeleteUpdate`. With the
+  primary key already on the `@revisionList` table variable ([spDeleteUpdate fix][spdelete]) the
+  stage reports "already applied" and changes nothing. With exactly one such declaration lacking
+  it, and a `CREATE PROCEDURE` header, it logs the definition, runs the live text with two changes
+  only (`PRIMARY KEY` added to that declaration, `CREATE` turned into `ALTER`), logs the new
+  definition and verifies it. Any other text is left untouched with a Warning notice; a failure to
+  read or alter is a Warning notice, and obsolete-update deletion still runs.
+- **ObsoleteUpdates** (REQ-001, 057, 075). `EXEC dbo.spGetObsoleteUpdatesToCleanup`, then
+  `EXEC dbo.spDeleteUpdate @localUpdateID` one update at a time ([guide]), with the time budget
+  checked before each deletion and a progress entry per deletion (or per
+  `run.progressBatchSize`) giving position, total, identifier and duration.
+  `obsoleteUpdates.maxDeletions` caps the deletions per run, with a Warning notice when reached. A
+  failed deletion is logged with its identifier and the error, and the next one proceeds; the
+  stage then ends in error. On a replica the first refusal ends the stage with "rejected by server
+  role" (warning).
+- **SyncHistory** (REQ-027). Deletes the `dbo.tbEventInstance` records of event namespace 2 with
+  event identifiers 381, 382, 384, 386, 387 and 389 ([manual maintenance][maintenance], "Clean up
+  the synchronization history") whose `TimeAtServer` is more than `syncHistory.retentionDays` days
+  before the current UTC time, in batches of 10,000 with the time budget checked between batches;
+  zero days removes every such record. Without a `TimeAtServer` column the stage deletes nothing
+  and raises a Warning notice.
+- **Reindex** (REQ-024). Selects indexes from `sys.dm_db_index_physical_stats` in `SAMPLED`
+  mode with the thresholds of Microsoft's re-index script for SUSDB ([reindex]): page density below
+  85% where at least one page could be saved, fragmentation above 15% on more than 50 pages, or
+  above 80% on more than 10 pages. Heaps are left out (the published script cannot act on them),
+  and an index with several qualifying allocation units or partitions is handled once. Each index
+  is reorganized (density 75–85% with a fill factor set, or fragmentation below 30%), rebuilt with
+  fill factor 90 (at least 5,000 rows and no fill factor set) or rebuilt, with the budget checked
+  and progress logged per index. Pages before and after (`sys.dm_db_partition_stats`) give the
+  pages freed. `sp_updatestats` then runs, but only when no index failed, the budget did not stop
+  the stage, and the run identity is the database owner or a sysadmin; otherwise a Warning notice
+  names the login and the `ALTER AUTHORIZATION` command that fixes it.
+- **Dry run.** Each stage reads `Context.DryRun` and sends SUSDB nothing but reads (`SELECT` and
+  `spGetObsoleteUpdatesToCleanup`); the backup stage creates no folder and deletes no file, and
+  its retention preview lists the files it would delete.
+- **T-SQL provenance.** Every T-SQL statement is written for this script; it follows the logic
+  Microsoft publishes, and the code names the source next to it. No Microsoft script is copied.
+  The selection of synchronization-history records comes from Microsoft's manual-maintenance
+  article, whose code samples are published under the MIT License; the code carries the article's
+  address and that notice.
+- **Permissions.** Statistics are no longer gated by the permission check: a non-owner still
+  defragments, and the stage raises its own notice (REQ-024). `Test-SusdbPermission` reports the
+  login name and whether it is the owner or a sysadmin.
+
+The gate proves each stage against a stand-in SUSDB that answers the stage's queries
+(`tests/Helpers/MaintenanceFakes.ps1`): created and already-present indexes, and removal of only
+tagged ones; the fix applied with the before and after text, already applied, and unexpected text
+left untouched; N deletions with N progress entries, a cap of M deleting exactly M, a failure that
+carries on, a replica refusal and a budget stop; every re-index action and threshold, and
+statistics skipped for a non-owner with the corrective command; batched sync-history deletion and
+the missing-column warning; dated backups with each compression and same-day option, the
+free-space skip, a failed backup, and the retention over mixed ages, a foreign file and a
+sub-folder; the gate closed, open and advisory; and a whole dry run that sends SUSDB only reads.
+
+Notes for M6 onwards:
 
 - **Stage handlers.** Each stage milestone adds its handler to the table in
   `Get-MaintenanceStageHandler`. A handler is a script block with one `-Context` parameter
-  (`StageName`, `DryRun`, `Configuration`, `Deadline`, `RunStart`, `Log`, `Server`)
-  that returns `[PSCustomObject]@{ Status; Counts; Items; Message; Notices }`. A stage that works
-  item by item calls `Test-MaintenanceBudget -Deadline:$Context.Deadline` between items and
+  (`StageName`, `DryRun`, `Configuration`, `Deadline`, `RunStart`, `Log`, `Server`,
+  `RemoveCustomIndexes`) that returns `[PSCustomObject]@{ Status; Counts; Items; Message; Notices }`,
+  built with `New-MaintenanceStageResult`. A stage that works item by item calls
+  `Test-MaintenanceBudget -Deadline:$Context.Deadline` between items and
   `Write-MaintenanceProgress -Log:$Context.Log -BatchSize:$Context.Configuration.run.progressBatchSize`
-  for each item. In a dry run the handler calls its stage function with `-WhatIf:$Context.DryRun`.
+  for each item. In a dry run the stage reads `Context.DryRun`, changes nothing and reports what it
+  would change.
 - **Secrets.** A feature that reads a secret (none in release one) calls
   `Register-MaintenanceSecret` as soon as it has it.
 - **Server facts.** `Context.Server` carries `Tier`, `Role`, `Environment`, `Permission`,
-  `UpdateServer` (the connected `IUpdateServer`), `Database` (the open SUSDB connection) and
-  `CommandTimeoutSeconds`. SUSDB work goes through
+  `UpdateServer` (the connected `IUpdateServer`), `Database` (the open SUSDB connection, also
+  returned by `Get-SusdbConnection`) and `CommandTimeoutSeconds`. SUSDB work goes through
   `Invoke-SusdbCommand -Connection:$Context.Server.Database -TimeoutSeconds:$Context.Server.CommandTimeoutSeconds -Log:$Context.Log`
-  with parameters, never concatenated values.
-- **Replica refusals.** Database operations a replica refuses are reported by the stage as
-  "rejected by server role" warnings (section 5); the built-in cleanup's decline options and
-  stale-computer moves read `Context.Server.Tier` (M6).
+  with parameters, never concatenated values; identifiers that cannot be parameters are quoted
+  with `ConvertTo-SqlIdentifier`.
+- **Replica refusals.** The built-in cleanup's decline options and stale-computer moves read
+  `Context.Server.Tier` (M6).
 - **Declines act on every run.** There is no preview-only mode; a dry run is the way to
   see what a decline policy would do.
-- **Backup gate.** Dependency gating (REQ-056) is added in M5 inside the run loop of
-  `Invoke-MaintenanceRun`: a stage with `AltersDatabase` is skipped when the gate is `Required`
-  and no recent backup succeeded.
+- **Backup gate.** It applies to every catalogue entry with `AltersDatabase`, so the M6 stages
+  `BuiltInCleanup` and `StaleComputers` and the M7 stage `DeclinedDeletion` are covered without
+  further work.
 - **Tier gating.** Done in M4 in `Get-MaintenanceStagePlan`: on a replica the decline policies
   and declined-update deletion are skipped with "skipped: replica", and with an unknown tier with
   "skipped: server role unknown"; approval stages (M8) join the gated list.
@@ -688,17 +789,35 @@ download-only-when-approved on, with per-deployment expected values) join the he
     the API web service requires TLS, or `discovery.wsusHostName` and `discovery.wsusUseTls` must
     be set;
   - that `HAS_PERMS_BY_NAME` reports the stage permissions as expected for SYSTEM as database
-    owner.
+    owner;
+  - that `dbo.tbEventInstance` has the `TimeAtServer` column and that it holds UTC times;
+  - that SYSTEM can read `msdb.dbo.backupset` for the backup gate, and that the SQL Server service
+    account can create and write the backup files in the destination folder;
+  - that `SERVERPROPERTY('Edition')` begins with the edition name the compression choice reads;
+  - the text `OBJECT_DEFINITION` returns for `dbo.spDeleteUpdate` on each supported WSUS version
+    (leading comments, header, declaration spacing), before and after the fix;
+  - that `sys.sp_addextendedproperty` tags the custom indexes as expected;
+  - which SUSDB operations a replica refuses, and with what error;
+  - the duration of each stage on a large SUSDB that has gone without maintenance.
 - **WSUS API connection time-out.** The administration API has no connection time-out parameter;
   `run.connectionTimeoutSeconds` bounds the SUSDB connection only, and the API connection is
   bounded by the API's own web-request time-out.
 - **spDeleteUpdate fix.** Applied as a targeted edit of the live procedure (adding `PRIMARY KEY` to
   the `@revisionList` table variable), never by replaying the full published body. It is checked
-  on every run.
+  on every run. A WSUS update that rewrites the procedure in an unexpected shape leaves it
+  untouched with a warning until the recognized patterns are extended.
 - **Statistics.** `sp_updatestats` needs the database owner or sysadmin. Making SYSTEM the SUSDB
   owner satisfies that.
 - **Custom indexes.** Created under the names Microsoft publishes and tagged with an extended
-  property, so that the removal action drops only the indexes this script created.
+  property, so that the removal action drops only the indexes this script created. An index of
+  the same name created by hand before the script ran carries no tag and is never dropped.
+- **Sync-history age.** Records are aged by `TimeAtServer` against the current UTC time; if the
+  column holds local time on some servers, the age is off by the UTC offset.
+- **Backup size estimate.** The estimate is the database's reserved space, which overstates a
+  compressed backup; the margin is applied on top.
+- **Same-day append.** With `backup.sameDay` set to `Append`, a second backup on the same day
+  fails if compression differs from the first, because compressed and uncompressed backups cannot
+  share a media set ([backup compression][compression]).
 - **Built-in cleanup and the run budget.** The built-in cleanup is one API call that cannot be
   interrupted; the budget can only stop it from starting.
 - **Validation under PowerShell 7.** Date-like strings in JSON become `DateTime` under PowerShell 7
@@ -718,6 +837,10 @@ download-only-when-approved on, with per-deployment expected values) join the he
 [iupdate]: https://learn.microsoft.com/previous-versions/windows/desktop/ms752700(v=vs.85)
 [resume]: https://learn.microsoft.com/previous-versions/windows/desktop/ms748088(v=vs.85)
 [config]: https://learn.microsoft.com/previous-versions/windows/desktop/ms752728(v=vs.85)
+[reindex]: https://learn.microsoft.com/troubleshoot/mem/configmgr/update-management/reindex-the-wsus-database
+[compression]: https://learn.microsoft.com/sql/relational-databases/backup-restore/backup-compression-sql-server
+[spdelete]: https://learn.microsoft.com/troubleshoot/mem/configmgr/update-management/spdeleteupdate-slow-performance
+[maintenance]: https://learn.microsoft.com/troubleshoot/mem/configmgr/update-management/wsus-automatic-maintenance
 [settings]: https://learn.microsoft.com/security-updates/windowsupdateservices/18125970
 [release]: https://learn.microsoft.com/windows/release-health/windows-server-release-info
 [adminproxy]: https://learn.microsoft.com/previous-versions/windows/desktop/ms745830(v=vs.85)
