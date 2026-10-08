@@ -9,9 +9,10 @@ reporting, packaged as one Windows PowerShell 5.1 script that a scheduled task r
 > summary, events, failure reports), M4 (discovery, connections, server tier, database
 > permissions, synchronization guard), M5 (SUSDB upkeep: backup and retention, backup gate,
 > custom indexes, the spDeleteUpdate fix, obsolete-update deletion, sync-history cleanup,
-> re-index and statistics) and M6 (the built-in WSUS cleanup, one option at a time, and stale
-> computer removal with its guard) are complete. The decline, housekeeping and health stages are
-> not implemented yet and are reported as not available. See
+> re-index and statistics), M6 (the built-in WSUS cleanup, one option at a time, and stale
+> computer removal with its guard) and M7 (the decline engine: superseded, accelerated, expired
+> and rule-based declines, and declined-update deletion, off by default) are complete. The
+> housekeeping and health stages are not implemented yet and are reported as not available. See
 > [docs/DESIGN.md](docs/DESIGN.md) for the design and milestone plan.
 
 ## Supported servers

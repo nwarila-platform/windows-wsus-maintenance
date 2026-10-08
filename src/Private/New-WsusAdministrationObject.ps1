@@ -13,9 +13,10 @@ Function New-WsusAdministrationObject {
         Creates a scope object of the WSUS administration API.
 
     .DESCRIPTION
-        A seam around the scope classes of Microsoft.UpdateServices.Administration (CleanupScope and
-        ComputerTargetScope), so that tests can replace them on computers without WSUS. The API assembly
-        is loaded when the run connects to WSUS; without it the function throws.
+        A seam around the scope classes of Microsoft.UpdateServices.Administration (CleanupScope,
+        ComputerTargetScope and UpdateScope), so that tests can replace them on computers without
+        WSUS. The API assembly is loaded when the run connects to WSUS; without it the function
+        throws.
 
     .PARAMETER TypeName
         Name of the class in Microsoft.UpdateServices.Administration.
@@ -43,7 +44,7 @@ Function New-WsusAdministrationObject {
       ValueFromPipeline = $False,
       ValueFromPipelineByPropertyName = $False
     )]
-    [ValidateSet('CleanupScope', 'ComputerTargetScope')]
+    [ValidateSet('CleanupScope', 'ComputerTargetScope', 'UpdateScope')]
     [System.String]
     $TypeName
   )

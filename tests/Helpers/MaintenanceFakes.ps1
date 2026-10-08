@@ -56,7 +56,11 @@ Function New-FakeUpdateServer {
     [System.Object[]]$Computers = @(),
     [System.String[]]$Groups = @(),
     [System.Management.Automation.ScriptBlock]$Cleanup = $Null,
-    [System.String[]]$FailingComputers = @()
+    [System.String[]]$FailingComputers = @(),
+    [System.Object[]]$Updates = @(),
+    [System.String[]]$FailingUpdates = @(),
+    [System.String]$UpdatesFailure = '',
+    [System.Boolean]$CultureFails = $False
   )
 
   $State = [PSCustomObject]@{
@@ -74,6 +78,19 @@ Function New-FakeUpdateServer {
     FailingComputers   = @($FailingComputers)
     Deleted            = [System.Collections.Generic.List[System.String]]::new()
     Added              = [System.Collections.Generic.List[System.String]]::new()
+    Updates            = [System.Collections.Generic.List[System.Object]]::new()
+    FailingUpdates     = @($FailingUpdates)
+    UpdatesFailure     = $UpdatesFailure
+    UpdateScopes       = [System.Collections.Generic.List[System.Object]]::new()
+    DeclinedUpdates    = [System.Collections.Generic.List[System.String]]::new()
+    DeletedUpdates     = [System.Collections.Generic.List[System.String]]::new()
+    Culture            = ''
+    CultureFails       = $CultureFails
+    Cultures           = [System.Collections.Generic.List[System.String]]::new()
+  }
+  ForEach ($Update In $Updates) {
+    $Update | Add-Member -MemberType NoteProperty -Name State -Value $State -Force
+    $State.Updates.Add($Update)
   }
   If ($Null -eq $State.Cleanup) {
     $State.Cleanup = { Param ($Scope) New-FakeCleanupResult -Scope $Scope }
@@ -123,12 +140,31 @@ Function New-FakeUpdateServer {
     PortNumber                       = 8531
     IsConnectionSecureForApiRemoting = $True
     Version                          = [System.Version]'10.0.20348.2700'
-    PreferredCulture                 = ''
     Subscription                     = $Subscription
     Configuration                    = $Configuration
     State                            = $State
   }
   $Server | Add-Member -MemberType ScriptMethod -Name GetSubscription -Value { $this.Subscription }
+  $Server | Add-Member -MemberType ScriptProperty -Name PreferredCulture -Value { $this.State.Culture } -SecondValue {
+    Param ($Value)
+    If ($this.State.CultureFails) { Throw 'The culture is not supported.' }
+    $this.State.Culture = $Value
+    $this.State.Cultures.Add($Value)
+  }
+  $Server | Add-Member -MemberType ScriptMethod -Name GetUpdates -Value {
+    Param ($Scope)
+    $this.State.UpdateScopes.Add($Scope)
+    If ($this.State.UpdatesFailure -ne '') { Throw $this.State.UpdatesFailure }
+    $Declined = [System.String]$Scope.ApprovedStates -eq 'Declined'
+    @($this.State.Updates | Where-Object -FilterScript { ($PSItem.IsDeclined -eq $Declined) -and ($PSItem.ArrivalDate -ge $Scope.FromArrivalDate) })
+  }
+  $Server | Add-Member -MemberType ScriptMethod -Name DeleteUpdate -Value {
+    Param ($UpdateId)
+    $Target = @($this.State.Updates | Where-Object -FilterScript { $PSItem.Id.UpdateId -eq $UpdateId })[0]
+    If ($this.State.FailingUpdates -contains $Target.Title) { Throw ('The update {0} is still referenced by other updates.' -f $Target.Title) }
+    $Null = $this.State.Updates.Remove($Target)
+    $this.State.DeletedUpdates.Add($Target.Title)
+  }
   $Server | Add-Member -MemberType ScriptMethod -Name GetCleanupManager -Value {
     $Manager = [PSCustomObject]@{ State = $this.State }
     $Manager | Add-Member -MemberType ScriptMethod -Name PerformCleanup -Value {
@@ -357,7 +393,13 @@ Function New-FakeComputer {
 Function New-FakeWsusObject {
   Param ([System.String]$TypeName)
 
-  If ($TypeName -eq 'CleanupScope') {
+  If ($TypeName -eq 'UpdateScope') {
+    [PSCustomObject]@{
+      ApprovedStates  = 'Any'
+      FromArrivalDate = [System.DateTime]::MinValue
+      ToArrivalDate   = [System.DateTime]::MaxValue
+    }
+  } ElseIf ($TypeName -eq 'CleanupScope') {
     [PSCustomObject]@{
       DeclineSupersededUpdates          = $False
       DeclineExpiredUpdates             = $False
@@ -389,4 +431,51 @@ Function New-FakeCleanupResult {
     ObsoleteComputersDeleted  = $(If ($All -or $Scope.CleanupObsoleteComputers) { 5 } Else { 0 })
     DiskSpaceFreed            = $(If ($All -or $Scope.CleanupUnneededContentFiles) { [System.Int64]1610612736 } Else { [System.Int64]0 })
   }
+}
+
+# An update as the WSUS administration API describes it. Decline fails for an update the update
+#   server lists in -FailingUpdates (by title).
+Function New-FakeUpdate {
+  Param (
+    [System.String]$Title,
+    [System.String[]]$Kb = @(),
+    [System.String]$Classification = 'Security Updates',
+    [System.String[]]$Products = @('Windows Server 2022'),
+    [System.String[]]$Families = @('Windows'),
+    [System.String]$Source = 'MicrosoftUpdate',
+    [System.DateTime]$Created = [System.DateTime]::new(2026, 1, 1),
+    [System.DateTime]$Arrived = [System.DateTime]::new(2026, 1, 2),
+    [System.Boolean]$Superseded = $False,
+    [System.Boolean]$SupersedesOthers = $False,
+    [System.Boolean]$Approved = $False,
+    [System.Boolean]$Expired = $False,
+    [System.Boolean]$Declined = $False,
+    [System.String]$LegacyName = '',
+    [System.Guid]$Id = [System.Guid]::NewGuid()
+  )
+
+  $Update = [PSCustomObject]@{
+    Id                        = [PSCustomObject]@{ UpdateId = $Id; RevisionNumber = 1 }
+    Title                     = $Title
+    LegacyName                = $LegacyName
+    KnowledgebaseArticles     = $Kb
+    ProductTitles             = $Products
+    ProductFamilyTitles       = $Families
+    UpdateClassificationTitle = $Classification
+    UpdateSource              = $Source
+    CreationDate              = $Created
+    ArrivalDate               = $Arrived
+    IsSuperseded              = $Superseded
+    HasSupersededUpdates      = $SupersedesOthers
+    IsApproved                = $Approved
+    IsDeclined                = $Declined
+    PublicationState          = $(If ($Expired) { 'Expired' } Else { 'Published' })
+    State                     = $Null
+  }
+  $Update | Add-Member -MemberType ScriptMethod -Name Decline -Value {
+    If ($this.State.FailingUpdates -contains $this.Title) { Throw ('The update {0} could not be declined.' -f $this.Title) }
+    $this.IsDeclined = $True
+    $this.State.DeclinedUpdates.Add($this.Title)
+  }
+  $Update
 }

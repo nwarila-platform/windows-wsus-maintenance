@@ -7,14 +7,19 @@ Describe 'Get-MaintenanceStageHandler' {
     . (Join-Path -Path $PSScriptRoot -ChildPath '../../build/Invoke-WsusMaintenance.Functions.ps1')
 
     $script:Delivered = [ordered]@{
-      Backup          = 'Backup-Susdb'
-      CustomIndexes   = 'Set-SusdbCustomIndex'
-      DeleteUpdateFix = 'Set-DeleteUpdateProcedureFix'
-      ObsoleteUpdates = 'Invoke-ObsoleteUpdateCleanup'
-      BuiltInCleanup  = 'Invoke-WsusBuiltInCleanup'
-      SyncHistory     = 'Remove-SyncHistory'
-      StaleComputers  = 'Invoke-StaleComputerCleanup'
-      Reindex         = 'Invoke-SusdbIndexMaintenance'
+      Backup             = 'Backup-Susdb'
+      CustomIndexes      = 'Set-SusdbCustomIndex'
+      DeleteUpdateFix    = 'Set-DeleteUpdateProcedureFix'
+      SupersededDecline  = 'Invoke-SupersededDecline'
+      AcceleratedDecline = 'Invoke-AcceleratedDecline'
+      ExpiredDecline     = 'Invoke-ExpiredDecline'
+      RuleDecline        = 'Invoke-RuleDecline'
+      DeclinedDeletion   = 'Remove-DeclinedUpdate'
+      ObsoleteUpdates    = 'Invoke-ObsoleteUpdateCleanup'
+      BuiltInCleanup     = 'Invoke-WsusBuiltInCleanup'
+      SyncHistory        = 'Remove-SyncHistory'
+      StaleComputers     = 'Invoke-StaleComputerCleanup'
+      Reindex            = 'Invoke-SusdbIndexMaintenance'
     }
   }
 

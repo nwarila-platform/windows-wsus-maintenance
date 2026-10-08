@@ -50,14 +50,19 @@ Function Get-MaintenanceStageHandler {
 
   # Initialize Variable(s)
   [System.Collections.Hashtable]$Private:Handlers = @{
-    Backup          = { Param ($Context) Backup-Susdb -Context:$Context }
-    CustomIndexes   = { Param ($Context) Set-SusdbCustomIndex -Context:$Context }
-    DeleteUpdateFix = { Param ($Context) Set-DeleteUpdateProcedureFix -Context:$Context }
-    ObsoleteUpdates = { Param ($Context) Invoke-ObsoleteUpdateCleanup -Context:$Context }
-    BuiltInCleanup  = { Param ($Context) Invoke-WsusBuiltInCleanup -Context:$Context }
-    SyncHistory     = { Param ($Context) Remove-SyncHistory -Context:$Context }
-    StaleComputers  = { Param ($Context) Invoke-StaleComputerCleanup -Context:$Context }
-    Reindex         = { Param ($Context) Invoke-SusdbIndexMaintenance -Context:$Context }
+    Backup             = { Param ($Context) Backup-Susdb -Context:$Context }
+    CustomIndexes      = { Param ($Context) Set-SusdbCustomIndex -Context:$Context }
+    DeleteUpdateFix    = { Param ($Context) Set-DeleteUpdateProcedureFix -Context:$Context }
+    SupersededDecline  = { Param ($Context) Invoke-SupersededDecline -Context:$Context }
+    AcceleratedDecline = { Param ($Context) Invoke-AcceleratedDecline -Context:$Context }
+    ExpiredDecline     = { Param ($Context) Invoke-ExpiredDecline -Context:$Context }
+    RuleDecline        = { Param ($Context) Invoke-RuleDecline -Context:$Context }
+    DeclinedDeletion   = { Param ($Context) Remove-DeclinedUpdate -Context:$Context }
+    ObsoleteUpdates    = { Param ($Context) Invoke-ObsoleteUpdateCleanup -Context:$Context }
+    BuiltInCleanup     = { Param ($Context) Invoke-WsusBuiltInCleanup -Context:$Context }
+    SyncHistory        = { Param ($Context) Remove-SyncHistory -Context:$Context }
+    StaleComputers     = { Param ($Context) Invoke-StaleComputerCleanup -Context:$Context }
+    Reindex            = { Param ($Context) Invoke-SusdbIndexMaintenance -Context:$Context }
   }
   [System.Management.Automation.ScriptBlock]$Private:Result = $Null
 

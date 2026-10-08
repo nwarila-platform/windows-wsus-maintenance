@@ -11,6 +11,14 @@ Private. Creates the nightly full SUSDB backup and applies the backup retention.
 
 Private. Connects to the WSUS administration interface and to SUSDB.
 
+## ConvertTo-DeclineItemText
+
+Private. Describes an update for a decline or deletion list.
+
+## ConvertTo-DeclineRecord
+
+Private. Reads the attributes the decline policies use from one update.
+
 ## ConvertTo-DeleteUpdateFix
 
 Private. Works out whether spDeleteUpdate carries Microsoft's fix, and the edited definition if not.
@@ -66,6 +74,10 @@ Private. Releases the system-wide run lock.
 ## Get-BackupDestinationSpace
 
 Private. Returns the free space of the volume holding the backup folder.
+
+## Get-DeclineCatalog
+
+Private. Returns the undeclined updates every decline policy of the run evaluates.
 
 ## Get-MaintenanceConfigurationRule
 
@@ -135,6 +147,10 @@ Private. Detects the server tier: top tier, autonomous downstream or replica dow
 
 Private. Reads the values WSUS setup records in the registry.
 
+## Get-WsusUpdateRecord
+
+Private. Retrieves updates from WSUS in the evaluation language, as decline records.
+
 ## Get-WsusUpdateServer
 
 Private. Connects to the WSUS administration interface.
@@ -142,6 +158,18 @@ Private. Connects to the WSUS administration interface.
 ## Initialize-MaintenanceFolder
 
 Private. Makes sure a folder exists and can be written.
+
+## Invoke-AcceleratedDecline
+
+Private. Declines superseded updates of selected classifications after a shorter age.
+
+## Invoke-DeclineSelection
+
+Private. Declines the updates a decline policy selected, one at a time.
+
+## Invoke-ExpiredDecline
+
+Private. Declines expired updates.
 
 ## Invoke-MaintenanceRun
 
@@ -155,9 +183,21 @@ Private. Runs one planned stage inside its own error boundary.
 
 Private. Deletes obsolete updates one at a time with the SUSDB procedures Microsoft documents.
 
+## Invoke-RuleDecline
+
+Private. Declines the updates that the configured decline rules describe.
+
 ## Invoke-StaleComputerCleanup
 
 Private. Deletes, or moves into a group, the computers that have stopped synchronizing.
+
+## Invoke-SupersededDecline
+
+Private. Declines superseded updates older than the age threshold.
+
+## Invoke-SupersededPolicy
+
+Private. Applies a superseded-update decline policy.
 
 ## Invoke-SusdbCommand
 
@@ -178,6 +218,10 @@ Private. Runs the built-in WSUS cleanup, one option at a time.
 ## Invoke-WsusMaintenance
 
 Public. Runs one unattended WSUS maintenance pass.
+
+## New-DeclineUnavailableResult
+
+Private. Builds the result of a decline policy that could not act because the update list was missing.
 
 ## New-ErrorRecord
 
@@ -259,6 +303,10 @@ Private. Registers a secret value so that it is never written anywhere.
 
 Private. Applies the backup retention to the backup files this script created.
 
+## Remove-DeclinedUpdate
+
+Private. Deletes declined updates from WSUS.
+
 ## Remove-SyncHistory
 
 Private. Deletes old synchronization-history records from SUSDB.
@@ -287,6 +335,10 @@ Private. Restarts the synchronization the run stopped and restores the schedule 
 
 Private. Saves the rendered report files of one run.
 
+## Select-SupersededUpdate
+
+Private. Selects the superseded updates a superseded-update policy declines.
+
 ## Set-DeleteUpdateProcedureFix
 
 Private. Applies Microsoft's fix for the slow spDeleteUpdate procedure when it is missing.
@@ -302,6 +354,10 @@ Private. Ends a run that failed a precondition, after reporting the failure.
 ## Test-BackupGate
 
 Private. Decides whether stages that alter SUSDB may run, given the backup state.
+
+## Test-DeclineRuleCondition
+
+Private. Evaluates a decline-rule condition against one update.
 
 ## Test-MaintenanceBudget
 
@@ -366,6 +422,10 @@ Private. Tells whether an exception, or any exception inside it, is a time-out.
 ## Test-SusdbPermission
 
 Private. Checks, before any work, which database permissions each stage has.
+
+## Test-UpdateIdentity
+
+Private. Tells whether an update is named in a list of Knowledge Base numbers and update identifiers.
 
 ## Wait-MaintenanceInterval
 

@@ -18,8 +18,8 @@ Function Connect-MaintenanceServer {
     .DESCRIPTION
         Connects to the local WSUS server through its administration interface, or, when any of
         discovery.wsusHostName, discovery.wsusPort or discovery.wsusUseTls is set, to that host (default:
-        this computer), port (default: 8531 with TLS, 8530 without) and TLS setting. The returned strings
-        are requested in declines.evaluationLanguage. It then opens SUSDB with integrated authentication
+        this computer), port (default: 8531 with TLS, 8530 without) and TLS setting; the decline stages
+        set the language of returned strings themselves. It then opens SUSDB with integrated authentication
         and the run.connectionTimeoutSeconds connection time-out. The time each connection was
         established is recorded. A failure is returned in Error, with Point naming the connection that
         failed (Api or Database); the caller stops the run with the precondition-failure code.
@@ -105,7 +105,6 @@ Function Connect-MaintenanceServer {
 
   Try {
     $UpdateServer = Get-WsusUpdateServer -HostName:$HostName -Port:$Port -UseTls:$UseTls
-    $UpdateServer.PreferredCulture = [System.String]$Configuration.declines.evaluationLanguage
     $ApiConnectedAt = Get-MaintenanceTime
     $Endpoint = $Script:Message['Connect-MaintenanceServer.Endpoint'] -f (Get-MaintenancePropertyValue -InputObject:$UpdateServer -Name:'Name' -Default:$HostName), (Get-MaintenancePropertyValue -InputObject:$UpdateServer -Name:'PortNumber' -Default:$Port), $(If ((Get-MaintenancePropertyValue -InputObject:$UpdateServer -Name:'IsConnectionSecureForApiRemoting' -Default:$UseTls) -eq $True) { 'TLS' } Else { $Script:Message['Connect-MaintenanceServer.NoTls'] })
   } Catch {
