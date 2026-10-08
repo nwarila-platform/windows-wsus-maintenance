@@ -79,6 +79,17 @@ Describe 'Get-MaintenanceStagePlan' {
     (Get-Entry -Plan @(Get-MaintenanceStagePlan -Configuration $script:Configuration -Tier 'TopTier') -Name 'SupersededDecline').Mode | Should -Be 'Run'
   }
 
+  It 'skips the stale-computer stage on a <Tier> server only when it moves computers into a group' -ForEach @(
+    @{ Tier = 'Replica'; Reason = 'skipped: replica' }
+    @{ Tier = 'Unknown'; Reason = 'skipped: server role unknown' }
+  ) {
+    $Move = ConvertTo-MaintenanceEffectiveConfiguration -Document ('{ "schemaVersion": 1, "backup": { "destination": "H:\\B" }, "staleComputers": { "action": "Move", "targetGroup": "Stale" } }' | ConvertFrom-Json)
+
+    (Get-Entry -Plan @(Get-MaintenanceStagePlan -Configuration $Move -Tier $Tier) -Name 'StaleComputers').Reason | Should -Be $Reason
+    (Get-Entry -Plan @(Get-MaintenanceStagePlan -Configuration $Move -Tier 'Autonomous') -Name 'StaleComputers').Mode | Should -Be 'Run'
+    (Get-Entry -Plan @(Get-MaintenanceStagePlan -Configuration $script:Configuration -Tier $Tier) -Name 'StaleComputers').Mode | Should -Be 'Run'
+  }
+
   It 'skips a stage whose database permissions are missing and names them' {
     $Plan = @(Get-MaintenanceStagePlan -Configuration $script:Configuration -MissingPermission @{ Backup = @('BACKUP DATABASE'); DeclinedDeletion = @('EXECUTE on dbo.spDeleteUpdate') })
 

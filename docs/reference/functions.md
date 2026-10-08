@@ -15,6 +15,10 @@ Private. Connects to the WSUS administration interface and to SUSDB.
 
 Private. Works out whether spDeleteUpdate carries Microsoft's fix, and the edited definition if not.
 
+## ConvertTo-MaintenanceByteText
+
+Private. Writes a number of bytes in human-readable units.
+
 ## ConvertTo-MaintenanceConfigurationSchema
 
 Private. Renders the configuration catalogue as a JSON Schema document.
@@ -42,6 +46,10 @@ Private. Renders a run report as plain text.
 ## ConvertTo-SqlIdentifier
 
 Private. Quotes a name as a SQL Server identifier.
+
+## ConvertTo-StaleComputerText
+
+Private. Describes a client computer for the stale-computer list.
 
 ## Disconnect-MaintenanceServer
 
@@ -111,6 +119,10 @@ Private. Returns the open SUSDB connection a stage works with.
 
 Private. Chooses how to defragment one index, as Microsoft's WSUS re-index script does.
 
+## Get-WsusConnection
+
+Private. Returns the WSUS administration connection a stage works with.
+
 ## Get-WsusEnvironment
 
 Private. Discovers where SUSDB lives and whether this server is a supported combination.
@@ -143,6 +155,10 @@ Private. Runs one planned stage inside its own error boundary.
 
 Private. Deletes obsolete updates one at a time with the SUSDB procedures Microsoft documents.
 
+## Invoke-StaleComputerCleanup
+
+Private. Deletes, or moves into a group, the computers that have stopped synchronizing.
+
 ## Invoke-SusdbCommand
 
 Private. Runs one parameterized command against SUSDB.
@@ -154,6 +170,10 @@ Private. Defragments fragmented SUSDB indexes and then updates statistics.
 ## Invoke-SynchronizationGuard
 
 Private. Makes sure no synchronization runs during maintenance.
+
+## Invoke-WsusBuiltInCleanup
+
+Private. Runs the built-in WSUS cleanup, one option at a time.
 
 ## Invoke-WsusMaintenance
 
@@ -210,6 +230,10 @@ Private. Opens a connection to SQL Server.
 ## New-SusdbMessageHandler
 
 Private. Creates the handler that collects the messages a database command prints.
+
+## New-WsusAdministrationObject
+
+Private. Creates a scope object of the WSUS administration API.
 
 ## Open-MaintenanceRunOutput
 
@@ -334,6 +358,10 @@ Private. Reports whether configuration enables a stage.
 ## Test-MaintenanceStringValue
 
 Private. Validates one text configuration value.
+
+## Test-MaintenanceTimeout
+
+Private. Tells whether an exception, or any exception inside it, is a time-out.
 
 ## Test-SusdbPermission
 

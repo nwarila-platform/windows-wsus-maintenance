@@ -19,6 +19,10 @@ Describe 'Server seams' {
     { Get-WsusUpdateServer } | Should -Throw -ExpectedMessage 'The WSUS administration API (Microsoft.UpdateServices.Administration) is not installed on this computer.'
   }
 
+  It 'refuses to create an administration API object when the API is not installed' -Skip:$script:HasWsus {
+    { New-WsusAdministrationObject -TypeName 'CleanupScope' } | Should -Throw -ExpectedMessage 'The WSUS administration API type Microsoft.UpdateServices.Administration.CleanupScope is not available; it is loaded when the run connects to WSUS.'
+  }
+
   It 'throws when SQL Server cannot be reached' {
     { New-SqlConnection -ConnectionString 'Data Source=127.0.0.1,1;Initial Catalog=SUSDB;Connect Timeout=1;Integrated Security=False;User ID=probe;Password=probe' } | Should -Throw
   }
