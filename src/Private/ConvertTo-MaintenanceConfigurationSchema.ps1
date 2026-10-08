@@ -141,6 +141,10 @@ Function ConvertTo-MaintenanceConfigurationSchema {
         $Leaf['type'] = 'array'
         $Leaf['items'] = [ordered]@{ '$ref' = '#/definitions/declineGroup' }
       }
+      'ApprovalGroupArray' {
+        $Leaf['type'] = 'array'
+        $Leaf['items'] = [ordered]@{ '$ref' = '#/definitions/approvalGroup' }
+      }
       Default {
         $Leaf['type'] = 'array'
         $Leaf['items'] = [ordered]@{ '$ref' = '#/definitions/declineRule' }
@@ -173,7 +177,7 @@ Function ConvertTo-MaintenanceConfigurationSchema {
   }
 
   $Definitions = [ordered]@{
-    customIndex  = [ordered]@{
+    customIndex   = [ordered]@{
       type                 = 'object'
       additionalProperties = $False
       required             = [System.String[]]@('name', 'table', 'columns')
@@ -183,7 +187,7 @@ Function ConvertTo-MaintenanceConfigurationSchema {
         columns = [ordered]@{ type = 'array'; minItems = 1; uniqueItems = $True; items = [ordered]@{ type = 'string'; pattern = $IdentityPattern } }
       }
     }
-    declineGroup = [ordered]@{
+    declineGroup  = [ordered]@{
       type                 = 'object'
       additionalProperties = $False
       required             = [System.String[]]@('name', 'enabled')
@@ -192,7 +196,17 @@ Function ConvertTo-MaintenanceConfigurationSchema {
         enabled = [ordered]@{ type = 'boolean' }
       }
     }
-    declineRule  = [ordered]@{
+    approvalGroup = [ordered]@{
+      type                 = 'object'
+      additionalProperties = $False
+      required             = [System.String[]]@('name', 'delayDays')
+      properties           = [ordered]@{
+        name         = [ordered]@{ type = 'string'; minLength = 1 }
+        delayDays    = [ordered]@{ type = 'integer'; minimum = 0; maximum = 3650 }
+        deadlineDays = [ordered]@{ type = 'integer'; minimum = 0; maximum = 3650 }
+      }
+    }
+    declineRule   = [ordered]@{
       type                 = 'object'
       additionalProperties = $False
       required             = [System.String[]]@('name', 'enabled', 'condition')
@@ -203,7 +217,7 @@ Function ConvertTo-MaintenanceConfigurationSchema {
         condition = [ordered]@{ '$ref' = '#/definitions/condition' }
       }
     }
-    condition    = [ordered]@{
+    condition     = [ordered]@{
       oneOf = @(
         [ordered]@{ type = 'object'; additionalProperties = $False; required = [System.String[]]@('all'); properties = [ordered]@{ all = [ordered]@{ type = 'array'; minItems = 1; items = [ordered]@{ '$ref' = '#/definitions/condition' } } } }
         [ordered]@{ type = 'object'; additionalProperties = $False; required = [System.String[]]@('any'); properties = [ordered]@{ any = [ordered]@{ type = 'array'; minItems = 1; items = [ordered]@{ '$ref' = '#/definitions/condition' } } } }
@@ -213,7 +227,7 @@ Function ConvertTo-MaintenanceConfigurationSchema {
         [ordered]@{ '$ref' = '#/definitions/sourceTest' }
       )
     }
-    textTest     = [ordered]@{
+    textTest      = [ordered]@{
       type                 = 'object'
       additionalProperties = $False
       required             = [System.String[]]@('field', 'operator', 'value')
@@ -223,7 +237,7 @@ Function ConvertTo-MaintenanceConfigurationSchema {
         value    = [ordered]@{ type = 'string'; minLength = 1 }
       }
     }
-    dateTest     = [ordered]@{
+    dateTest      = [ordered]@{
       type                 = 'object'
       additionalProperties = $False
       required             = [System.String[]]@('field', 'operator', 'value')
@@ -233,7 +247,7 @@ Function ConvertTo-MaintenanceConfigurationSchema {
         value    = [ordered]@{ type = 'integer'; minimum = 0; maximum = 36500 }
       }
     }
-    sourceTest   = [ordered]@{
+    sourceTest    = [ordered]@{
       type                 = 'object'
       additionalProperties = $False
       required             = [System.String[]]@('field', 'operator', 'value')

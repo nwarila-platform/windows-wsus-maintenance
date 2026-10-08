@@ -36,6 +36,22 @@ Describe 'Test-MaintenanceConfigurationCrossField' {
     )
   }
 
+  It 'requires approval groups and a staging group while approval is enabled' {
+    $Errors = Test-CrossField -Json '{ "backup": { "destination": "H:\\B" }, "approval": { "enabled": true } }'
+
+    $Errors | Should -Be @(
+      'approval.groups: is required when approval.enabled is true.'
+      'approval.staging.groupName: is required when approval.enabled and approval.staging.enabled are true.'
+    )
+    Test-CrossField -Json '{ "backup": { "destination": "H:\\B" }, "approval": { "enabled": true, "groups": [ { "name": "Pilot", "delayDays": 7 } ], "staging": { "enabled": false } } }' | Should -HaveCount 0
+    Test-CrossField -Json '{ "backup": { "destination": "H:\\B" }, "approval": { "enabled": false } }' | Should -HaveCount 0
+  }
+
+  It 'refuses a staging group that is also an approval group' {
+    Test-CrossField -Json '{ "backup": { "destination": "H:\\B" }, "approval": { "enabled": true, "groups": [ { "name": "Pilot", "delayDays": 7 } ], "staging": { "groupName": "pilot" } } }' |
+      Should -Be @("approval.staging.groupName: the staging group 'pilot' must not also be one of approval.groups.")
+  }
+
   It 'requires a target group when stale computers are moved' {
     Test-CrossField -Json '{ "backup": { "destination": "H:\\B" }, "syncHistory": { "retentionDays": 1 }, "staleComputers": { "action": "Move" } }' |
       Should -Be @('staleComputers.targetGroup: is required when staleComputers.action is Move.')

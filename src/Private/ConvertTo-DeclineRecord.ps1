@@ -8,12 +8,13 @@ Function ConvertTo-DeclineRecord {
         Reads the attributes the decline policies use from one update.
 
     .DESCRIPTION
-        Copies the attributes of an IUpdate that the decline policies, the rules and the report use
-        into a plain record: the update identifier, title, legacy name, Knowledge Base article numbers
-        (without a KB prefix), product and product family titles, classification title, update source,
-        revision creation and arrival dates, the superseded, supersedes-others, approved, declined and
-        expired states, and the update itself for the decline call. Reading every attribute once, while
-        the evaluation language is in effect, keeps later evaluation independent of the connection.
+        Copies the attributes of an IUpdate that the decline policies, the rules, the approval stages
+        and the report use into a plain record: the update identifier and revision number, title,
+        legacy name, Knowledge Base article numbers (without a KB prefix), product and product family
+        titles, classification title, update source, revision creation and arrival dates, the
+        superseded, supersedes-others, approved, declined and expired states, and the update itself
+        for the decline and approval calls. Reading every attribute once, while the evaluation
+        language is in effect, keeps later evaluation independent of the connection.
 
     .PARAMETER Update
         The update (IUpdate).
@@ -60,6 +61,7 @@ Function ConvertTo-DeclineRecord {
 
   [PSCustomObject]$Result = [PSCustomObject]@{
     Id                    = [System.String]$Update.Id.UpdateId
+    Revision              = [System.Int32]$Update.Id.RevisionNumber
     Title                 = [System.String]$Update.Title
     LegacyName            = [System.String]$Update.LegacyName
     KnowledgeBaseArticles = [System.String[]]$Articles.ToArray()

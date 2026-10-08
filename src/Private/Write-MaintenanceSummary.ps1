@@ -16,11 +16,11 @@ Function Write-MaintenanceSummary {
         Writes WsusMaintenance-<run identifier>.json into the summary folder. It holds the run
         identifier, server, status, exit code, timings (local time with offset), the stages listed
         with -Stage, any failure, the stage and notice totals, each stage's status, reason, timing,
-        counts, message, item count and error, every notice, and the paths of the log and report
-        files. It is made from the same report model as the text and HTML reports, so its counts match
-        theirs, and it validates against docs/reference/summary.schema.json. Every text in the
-        model has already passed through Protect-MaintenanceText, so the JSON is written as
-        serialized. A folder that is not usable arrives empty and nothing is written; a
+        counts, message, item count, listed items and error, every notice, and the paths of the
+        log and report files. It is made from the same report model as the text and HTML reports,
+        so its counts match theirs, and it validates against docs/reference/summary.schema.json.
+        Every text in the model has already passed through Protect-MaintenanceText, so the JSON is
+        written as serialized. A folder that is not usable arrives empty and nothing is written; a
         write failure is returned in Error and never stops the run.
 
     .PARAMETER Folder
@@ -128,6 +128,7 @@ Function Write-MaintenanceSummary {
         counts          = $Counts
         message         = $Section.Message
         itemCount       = $Section.ItemCount
+        items           = [System.String[]]@($Section.Items)
         errorMessage    = $Section.ErrorMessage
         errorTime       = $(If ($Section.ErrorTime -is [System.DateTime]) { $Section.ErrorTime.ToString($TimeFormat, $Culture) } Else { $Null })
       }

@@ -548,6 +548,73 @@
         }
       }
     },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Approve the updates clients need for each configured computer group after its delay, and stage their content early. Leave off on a server that only synchronizes and serves.",
+          "type": "boolean",
+          "default": false
+        },
+        "groups": {
+          "description": "Computer groups to approve for, each {name, delayDays, deadlineDays?}: days after the revision creation date before approval, and days after approval to the install deadline (none when absent). Required when approval is enabled.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/approvalGroup"
+          },
+          "default": []
+        },
+        "staging": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "description": "Approve needed updates for an empty staging group so that their content downloads before their approval date.",
+              "type": "boolean",
+              "default": true
+            },
+            "groupName": {
+              "description": "Computer group used for content staging. It must exist and stay empty. Required when approval and staging are enabled.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "pattern": "^\\S(?:.{0,254}\\S)?$",
+              "default": null
+            }
+          }
+        },
+        "neverApprove": {
+          "description": "Updates never approved or staged, by Knowledge Base number or update GUID.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?:KB[0-9]{4,8}|[0-9]{4,8}|[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})$"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "excludedClassifications": {
+          "description": "Classifications never approved or staged, in addition to Upgrades, which is always excluded.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^\\S(?:.{0,254}\\S)?$"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "acceptLicenseAgreements": {
+          "description": "Accept the licence agreement of an update before approving or staging it; when false, such updates are left unapproved.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
     "declinedDeletion": {
       "type": "object",
       "additionalProperties": false,
@@ -989,6 +1056,13 @@
               "minimum": 1,
               "maximum": 65535,
               "default": 1300
+            },
+            "lateContent": {
+              "description": "Event identifier for approvals made before the update files were local.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "default": 1400
             }
           }
         }
@@ -1038,6 +1112,30 @@
         },
         "enabled": {
           "type": "boolean"
+        }
+      }
+    },
+    "approvalGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "delayDays"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "delayDays": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3650
+        },
+        "deadlineDays": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3650
         }
       }
     },

@@ -30,7 +30,7 @@ Describe 'Get-MaintenanceStagePlan' {
     $Plan = @(Get-MaintenanceStagePlan -Configuration $script:Configuration)
 
     @($Plan | Where-Object -FilterScript { $PSItem.Mode -eq 'Run' }) | Should -HaveCount 13
-    @($Plan | Where-Object -FilterScript { $PSItem.Mode -eq 'Skip' }).Name | Should -Be @('AcceleratedDecline', 'RuleDecline', 'DeclinedDeletion')
+    @($Plan | Where-Object -FilterScript { $PSItem.Mode -eq 'Skip' }).Name | Should -Be @('AcceleratedDecline', 'RuleDecline', 'ContentStaging', 'DeferredApproval', 'DeclinedDeletion')
     (Get-Entry -Plan $Plan -Name 'SupersededDecline').Mode | Should -Be 'Run'
     (Get-Entry -Plan $Plan -Name 'Reindex').Reason | Should -Be 'enabled'
     (Get-Entry -Plan $Plan -Name 'DeclinedDeletion').Reason | Should -Be 'disabled by configuration'
@@ -61,11 +61,11 @@ Describe 'Get-MaintenanceStagePlan' {
   }
 
   It 'skips every decline stage on a replica, stating the reason' {
-    $Configuration = ConvertTo-MaintenanceEffectiveConfiguration -Document ('{ "schemaVersion": 1, "backup": { "destination": "H:\\B" }, "declines": { "accelerated": { "enabled": true, "classifications": [ "Drivers" ], "ageDays": 30 } }, "declinedDeletion": { "enabled": true } }' | ConvertFrom-Json)
+    $Configuration = ConvertTo-MaintenanceEffectiveConfiguration -Document ('{ "schemaVersion": 1, "backup": { "destination": "H:\\B" }, "declines": { "accelerated": { "enabled": true, "classifications": [ "Drivers" ], "ageDays": 30 } }, "declinedDeletion": { "enabled": true }, "approval": { "enabled": true, "groups": [ { "name": "Pilot", "delayDays": 7 } ], "staging": { "groupName": "Staging" } } }' | ConvertFrom-Json)
 
     $Plan = @(Get-MaintenanceStagePlan -Configuration $Configuration -Tier 'Replica')
 
-    ForEach ($Name In @('SupersededDecline', 'AcceleratedDecline', 'ExpiredDecline', 'DeclinedDeletion')) {
+    ForEach ($Name In @('SupersededDecline', 'AcceleratedDecline', 'ExpiredDecline', 'ContentStaging', 'DeferredApproval', 'DeclinedDeletion')) {
       (Get-Entry -Plan $Plan -Name $Name).Mode | Should -Be 'Skip' -Because $Name
       (Get-Entry -Plan $Plan -Name $Name).Reason | Should -Be 'skipped: replica' -Because $Name
     }

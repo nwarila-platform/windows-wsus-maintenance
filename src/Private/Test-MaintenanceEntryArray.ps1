@@ -17,10 +17,12 @@ Function Test-MaintenanceEntryArray {
         Validates an array of structured configuration entries.
 
     .DESCRIPTION
-        Validates the three structured array types entry by entry:
+        Validates the four structured array types entry by entry:
         IndexArray entries {name, table, columns} name additional SUSDB indexes;
         GroupArray entries {name, enabled} define decline-rule groups;
-        RuleArray entries {name, enabled, condition, group?} define decline rules.
+        RuleArray entries {name, enabled, condition, group?} define decline rules;
+        ApprovalGroupArray entries {name, delayDays, deadlineDays?} define approval groups, with
+        whole days from 0 to 3650.
         Every entry must carry exactly its keys, names must be unique (ignoring case),
         and each field is checked against its own type. Returns every problem found.
 
@@ -28,7 +30,7 @@ Function Test-MaintenanceEntryArray {
         Location of the array in the document, used in messages.
 
     .PARAMETER Type
-        IndexArray, GroupArray or RuleArray.
+        IndexArray, GroupArray, RuleArray or ApprovalGroupArray.
 
     .PARAMETER Value
         The array to validate.
@@ -67,7 +69,7 @@ Function Test-MaintenanceEntryArray {
       ValueFromPipeline = $False,
       ValueFromPipelineByPropertyName = $False
     )]
-    [ValidateSet('IndexArray', 'GroupArray', 'RuleArray')]
+    [ValidateSet('IndexArray', 'GroupArray', 'RuleArray', 'ApprovalGroupArray')]
     [System.String]
     $Type,
 
@@ -120,6 +122,10 @@ Function Test-MaintenanceEntryArray {
     'GroupArray' {
       $AllowedKeys = @('enabled', 'name')
       $RequiredKeys = @('enabled', 'name')
+    }
+    'ApprovalGroupArray' {
+      $AllowedKeys = @('deadlineDays', 'delayDays', 'name')
+      $RequiredKeys = @('delayDays', 'name')
     }
     Default {
       $AllowedKeys = @('condition', 'enabled', 'group', 'name')
@@ -186,6 +192,14 @@ Function Test-MaintenanceEntryArray {
       If ($Present -ccontains 'columns') {
         ForEach ($ItemError In @(Test-MaintenanceConfigurationValue -Path:('{0}.columns' -f $EntryPath) -Rule:$ColumnsRule -Value:$Entry.PSObject.Properties['columns'].Value)) {
           $Errors.Add($ItemError)
+        }
+      }
+
+      ForEach ($Key In @('delayDays', 'deadlineDays')) {
+        If ($Present -ccontains $Key) {
+          ForEach ($ItemError In @(Test-MaintenanceIntegerValue -Maximum:3650 -Minimum:0 -Path:('{0}.{1}' -f $EntryPath, $Key) -Value:$Entry.PSObject.Properties[$Key].Value)) {
+            $Errors.Add($ItemError)
+          }
         }
       }
 

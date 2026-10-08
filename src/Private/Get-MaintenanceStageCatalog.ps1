@@ -14,8 +14,11 @@ Function Get-MaintenanceStageCatalog {
         enabled stage runs on every run; each acts only on what is due. The order
         satisfies every ordering constraint in the specification: backup first, custom
         indexes and the deletion-procedure fix before obsolete-update deletion, declines
-        before declined-update deletion and the built-in cleanup, all cleanup before
-        re-indexing, and the read-only health checks last so they see the result.
+        before content staging and deferred approval (so nothing declined is approved),
+        approvals before declined-update deletion and the built-in cleanup (so the content
+        cleanup sees the approvals), all cleanup before re-indexing, and the read-only
+        health checks last so they see the result. Approvals change approval state through
+        the WSUS API and are not gated.
 
     .EXAMPLE
         Get-MaintenanceStageCatalog
@@ -51,6 +54,8 @@ Function Get-MaintenanceStageCatalog {
     @('AcceleratedDecline', $False),
     @('ExpiredDecline', $False),
     @('RuleDecline', $False),
+    @('ContentStaging', $False),
+    @('DeferredApproval', $False),
     @('DeclinedDeletion', $True),
     @('ObsoleteUpdates', $True),
     @('BuiltInCleanup', $True),

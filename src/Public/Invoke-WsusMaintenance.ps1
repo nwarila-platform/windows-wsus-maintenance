@@ -527,6 +527,7 @@ Function Invoke-WsusMaintenance {
       Write-MaintenanceEvent -Channel:$Output.Events -Kind:'runStarted' -Message:($Script:Message['Invoke-WsusMaintenance.StartedEvent'] -f $RunId, $RunDescription)
       $Execution = Invoke-MaintenanceRun `
         -Configuration:$Resolution.Configuration `
+        -Events:$Output.Events `
         -Log:$Output.Log `
         -RemoveCustomIndexes:$Resolution.RemoveCustomIndexes `
         -RunStart:$RunStart `

@@ -3,6 +3,10 @@
 Every function in `src/`, in alphabetical order. Each function's `HelpUri` links to its entry
 here; the comment-based help in the source is the full reference.
 
+## Add-UpdateApproval
+
+Private. Records in the approval catalog an approval the run has made.
+
 ## Backup-Susdb
 
 Private. Creates the nightly full SUSDB backup and applies the backup retention.
@@ -70,6 +74,10 @@ Private. Takes the system-wide run lock or stops the run.
 ## Exit-MaintenanceLock
 
 Private. Releases the system-wide run lock.
+
+## Get-ApprovalCatalog
+
+Private. Gathers what the approval stages of a run need from WSUS, once.
 
 ## Get-BackupDestinationSpace
 
@@ -163,9 +171,17 @@ Private. Makes sure a folder exists and can be written.
 
 Private. Declines superseded updates of selected classifications after a shorter age.
 
+## Invoke-ContentStaging
+
+Private. Starts the content download of needed updates before their approval date.
+
 ## Invoke-DeclineSelection
 
 Private. Declines the updates a decline policy selected, one at a time.
+
+## Invoke-DeferredApproval
+
+Private. Approves needed updates for each configured group once its delay has passed.
 
 ## Invoke-ExpiredDecline
 
@@ -218,6 +234,10 @@ Private. Runs the built-in WSUS cleanup, one option at a time.
 ## Invoke-WsusMaintenance
 
 Public. Runs one unattended WSUS maintenance pass.
+
+## New-ApprovalUnavailableResult
+
+Private. Builds the result of an approval stage that could not act.
 
 ## New-DeclineUnavailableResult
 
@@ -335,6 +355,10 @@ Private. Restarts the synchronization the run stopped and restores the schedule 
 
 Private. Saves the rendered report files of one run.
 
+## Select-ApprovalCandidate
+
+Private. Selects the updates the approval stages consider.
+
 ## Select-SupersededUpdate
 
 Private. Selects the superseded updates a superseded-update policy declines.
@@ -422,6 +446,10 @@ Private. Tells whether an exception, or any exception inside it, is a time-out.
 ## Test-SusdbPermission
 
 Private. Checks, before any work, which database permissions each stage has.
+
+## Test-UpdateApproval
+
+Private. Tells whether the current revision of an update is approved for install for a group.
 
 ## Test-UpdateIdentity
 

@@ -89,6 +89,8 @@ Function Test-MaintenanceStageEnabled {
         }
       }
     }
+    'ContentStaging' { $Enabled = ($Configuration.approval.enabled -eq $True) -and ($Configuration.approval.staging.enabled -eq $True) }
+    'DeferredApproval' { $Enabled = $Configuration.approval.enabled }
     'DeclinedDeletion' { $Enabled = $Configuration.declinedDeletion.enabled }
     'ObsoleteUpdates' { $Enabled = $Configuration.obsoleteUpdates.enabled }
     'BuiltInCleanup' {

@@ -90,7 +90,7 @@ Describe 'Invoke-WsusMaintenance reporting guarantees' {
       @([System.Text.RegularExpressions.Regex]::Matches($script:Text, $TextPattern)) | Should -HaveCount 1 -Because $Outcome.Name
       @([System.Text.RegularExpressions.Regex]::Matches($script:Html, $HtmlPattern)) | Should -HaveCount 1 -Because $Outcome.Name
     }
-    $script:Result.Stages | Should -HaveCount 16
+    $script:Result.Stages | Should -HaveCount 18
   }
 
   It 'orders the notices by severity in both renderings' {
@@ -127,7 +127,7 @@ Describe 'Invoke-WsusMaintenance reporting guarantees' {
       Should -Be @(1..5 | ForEach-Object -Process { [System.Int32]$Stages.Groups[$PSItem].Value })
     @($script:Summary.totals.notices.error, $script:Summary.totals.notices.high, $script:Summary.totals.notices.warning, $script:Summary.totals.notices.information) |
       Should -Be @(1..4 | ForEach-Object -Process { [System.Int32]$Notices.Groups[$PSItem].Value })
-    @($script:Summary.stages) | Should -HaveCount 16
+    @($script:Summary.stages) | Should -HaveCount 18
     @($script:Summary.notices) | Should -HaveCount 3
   }
 

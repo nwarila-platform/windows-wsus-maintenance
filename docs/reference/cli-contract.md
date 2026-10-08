@@ -26,9 +26,9 @@ Every override given on the command line is recorded in the run result.
 ## Stage names
 
 `Backup`, `CustomIndexes`, `DeleteUpdateFix`, `SupersededDecline`, `AcceleratedDecline`,
-`ExpiredDecline`, `RuleDecline`, `DeclinedDeletion`, `ObsoleteUpdates`, `BuiltInCleanup`,
-`SyncHistory`, `StaleComputers`, `Reindex`, `IisLogRetention`, `ArtifactRetention`,
-`HealthChecks` (in execution order).
+`ExpiredDecline`, `RuleDecline`, `ContentStaging`, `DeferredApproval`, `DeclinedDeletion`,
+`ObsoleteUpdates`, `BuiltInCleanup`, `SyncHistory`, `StaleComputers`, `Reindex`,
+`IisLogRetention`, `ArtifactRetention`, `HealthChecks` (in execution order).
 
 ## Result object
 
@@ -57,12 +57,12 @@ requires a valid configuration, elevation (administrator or LocalSystem) and the
 connects to the WSUS administration interface and to SUSDB, detects the server tier, checks the
 database permissions of every stage and makes sure no synchronization runs, stopping one that
 does. It then plans every enabled stage (or the `-Stage` list) in catalogue order, skipping the
-decline stages and stale-computer group moves on a replica (and when the server role is unknown)
-and any stage that lacks a database permission, runs each in its own error boundary within the
-time budget, restarts the synchronization it stopped, closes the database connection, releases
-the lock on every path, and saves the report and the summary. A
-stage the budget stops from starting is reported as `NotRun` with a warning and runs again on the
-next run.
+decline and approval stages and stale-computer group moves on a replica (and when the server
+role is unknown) and any stage that lacks a database permission, runs each in its own error
+boundary within the time budget, restarts the synchronization it stopped, closes the database
+connection, releases the lock on every path, and saves the report and the summary. A stage the
+budget stops from starting is reported as `NotRun` with a warning and runs again on the next
+run.
 
 Before the first stage that deletes or alters SUSDB content (`CustomIndexes`, `DeleteUpdateFix`,
 `DeclinedDeletion`, `ObsoleteUpdates`, `BuiltInCleanup`, `SyncHistory`, `StaleComputers`), the
@@ -111,6 +111,7 @@ Events, under the source `eventLog.source` in `eventLog.logName`, with the ident
 | Stage error (one per failed stage) | `1100` | Error |
 | Precondition failure | `1200` | Error |
 | Invalid configuration | `1300` | Error |
+| Approvals made before the update files were local (one per run, naming each) | `1400` | Warning |
 
 When the source is not registered in that log, the run logs one warning and writes no events.
 

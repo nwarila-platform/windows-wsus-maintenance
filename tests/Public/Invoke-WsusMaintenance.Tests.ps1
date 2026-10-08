@@ -98,7 +98,7 @@ Describe 'Invoke-WsusMaintenance' {
 
     $Result.Status | Should -Be 'Success'
     $Result.ExitCode | Should -Be 0
-    $Result.Stages | Should -HaveCount 16
+    $Result.Stages | Should -HaveCount 18
     @($Result.Stages | Where-Object -FilterScript { $PSItem.Status -eq 'Success' }).Name | Should -Be @('Backup', 'CustomIndexes', 'DeleteUpdateFix', 'SupersededDecline', 'ExpiredDecline', 'ObsoleteUpdates', 'BuiltInCleanup', 'SyncHistory', 'StaleComputers', 'Reindex')
     @($Result.Stages | Where-Object -FilterScript { $PSItem.Reason -eq 'not available in this release' }).Name | Should -Be @('IisLogRetention', 'ArtifactRetention', 'HealthChecks')
     $script:UpdateServer.State.UpdateScopes | Should -HaveCount 1
@@ -179,6 +179,32 @@ Describe 'Invoke-WsusMaintenance' {
 
     $Schema = Join-Path -Path $PSScriptRoot -ChildPath '../../docs/reference/summary.schema.json'
     Test-Json -Json (Get-Content -LiteralPath $Result.Run.Artifacts.Summary -Raw) -SchemaFile $Schema | Should -BeTrue
+  }
+
+  It 'stages and approves needed updates, lists every action in the report and the summary, and repeats nothing' {
+    $Updates = @(
+      New-FakeUpdate -Title 'Needed update' -Kb @('5000101') -Needed 3 -Created ([System.DateTime]::new(2026, 10, 1)) -Local $True
+      New-FakeUpdate -Title 'Young update' -Kb @('5000102') -Needed 2 -Created ([System.DateTime]::new(2026, 11, 1))
+    )
+    $script:UpdateServer = New-FakeUpdateServer -Updates $Updates -Groups @('Pilot', 'Content Staging')
+    $Path = New-ConfigurationFile -Json '{ "schemaVersion": 1, "backup": { "destination": "H:\\SUSDB" }, "approval": { "enabled": true, "groups": [ { "name": "Pilot", "delayDays": 7, "deadlineDays": 2 } ], "staging": { "groupName": "Content Staging" } } }'
+
+    $Result = Invoke-WsusMaintenance -ConfigPath $Path
+    $Summary = Get-Content -LiteralPath $Result.Run.Artifacts.Summary -Raw | ConvertFrom-Json
+    $Report = Get-Content -LiteralPath ($Result.Run.Artifacts.Reports | Where-Object -FilterScript { $PSItem -like '*.txt' }) -Raw
+    $Again = Invoke-WsusMaintenance -ConfigPath $Path
+
+    $Result.Status | Should -Be 'Success'
+    ($Result.Stages | Where-Object -FilterScript { $PSItem.Name -eq 'ContentStaging' }).Counts['Staged'] | Should -Be 2
+    ($Result.Stages | Where-Object -FilterScript { $PSItem.Name -eq 'DeferredApproval' }).Counts['Approved'] | Should -Be 1
+    $Approval = @(($Summary.stages | Where-Object -FilterScript { $PSItem.name -eq 'DeferredApproval' }).items)
+    $Approval | Should -HaveCount 1
+    $Approval[0] | Should -BeLike 'approved for Pilot after 7 day(s), deadline * UTC, content local: Needed update (KB5000101, *)'
+    @(($Summary.stages | Where-Object -FilterScript { $PSItem.name -eq 'ContentStaging' }).items) | Should -HaveCount 2
+    $Report | Should -Match 'approved for Pilot after 7 day\(s\)'
+    ($Again.Stages | Where-Object -FilterScript { $PSItem.Name -eq 'DeferredApproval' }).Counts['Approved'] | Should -Be 0
+    ($Again.Stages | Where-Object -FilterScript { $PSItem.Name -eq 'ContentStaging' }).Counts['Staged'] | Should -Be 0
+    $script:UpdateServer.State.Approvals | Should -HaveCount 2
   }
 
   It 'sends SUSDB and WSUS nothing but reads in a dry run of every stage' {

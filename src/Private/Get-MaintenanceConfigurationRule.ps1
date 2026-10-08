@@ -133,6 +133,14 @@ Function Get-MaintenanceConfigurationRule {
     @{ Path = 'declines.rules'; Type = 'RuleArray'; Default = @(); Description = 'Decline rules defined for the deployment. None ships enabled.' }
     @{ Path = 'declines.groups'; Type = 'GroupArray'; Default = @(); Description = 'Rule groups. Disabling a group disables all of its rules.' }
 
+    @{ Path = 'approval.enabled'; Type = 'Boolean'; Default = $False; Description = 'Approve the updates clients need for each configured computer group after its delay, and stage their content early. Leave off on a server that only synchronizes and serves.' }
+    @{ Path = 'approval.groups'; Type = 'ApprovalGroupArray'; Default = @(); Description = 'Computer groups to approve for, each {name, delayDays, deadlineDays?}: days after the revision creation date before approval, and days after approval to the install deadline (none when absent). Required when approval is enabled.' }
+    @{ Path = 'approval.staging.enabled'; Type = 'Boolean'; Default = $True; Description = 'Approve needed updates for an empty staging group so that their content downloads before their approval date.' }
+    @{ Path = 'approval.staging.groupName'; Type = 'String'; Nullable = $True; Default = $Null; Pattern = $ClassificationPattern; Description = 'Computer group used for content staging. It must exist and stay empty. Required when approval and staging are enabled.' }
+    @{ Path = 'approval.neverApprove'; Type = 'StringArray'; Default = @(); Pattern = $IdentityPattern; Unique = $True; Description = 'Updates never approved or staged, by Knowledge Base number or update GUID.' }
+    @{ Path = 'approval.excludedClassifications'; Type = 'StringArray'; Default = @(); Pattern = $ClassificationPattern; Unique = $True; Description = 'Classifications never approved or staged, in addition to Upgrades, which is always excluded.' }
+    @{ Path = 'approval.acceptLicenseAgreements'; Type = 'Boolean'; Default = $True; Description = 'Accept the licence agreement of an update before approving or staging it; when false, such updates are left unapproved.' }
+
     @{ Path = 'declinedDeletion.enabled'; Type = 'Boolean'; Default = $False; Description = 'Delete declined updates from WSUS. Recovery requires a re-import or resynchronization.' }
     @{ Path = 'declinedDeletion.protected'; Type = 'StringArray'; Default = @(); Pattern = $IdentityPattern; Unique = $True; Description = 'Declined updates never deleted, by Knowledge Base number or update GUID.' }
     @{ Path = 'declinedDeletion.excludedClassifications'; Type = 'StringArray'; Default = @(); Pattern = $ClassificationPattern; Unique = $True; Description = 'Classifications whose declined updates are never deleted.' }
@@ -185,6 +193,7 @@ Function Get-MaintenanceConfigurationRule {
     @{ Path = 'eventLog.eventIds.stageError'; Type = 'Integer'; Default = 1100; Minimum = 1; Maximum = 65535; Description = 'Event identifier for each stage error.' }
     @{ Path = 'eventLog.eventIds.preconditionFailure'; Type = 'Integer'; Default = 1200; Minimum = 1; Maximum = 65535; Description = 'Event identifier for a precondition failure.' }
     @{ Path = 'eventLog.eventIds.configurationInvalid'; Type = 'Integer'; Default = 1300; Minimum = 1; Maximum = 65535; Description = 'Event identifier for an invalid configuration.' }
+    @{ Path = 'eventLog.eventIds.lateContent'; Type = 'Integer'; Default = 1400; Minimum = 1; Maximum = 65535; Description = 'Event identifier for approvals made before the update files were local.' }
   )
 
   $Rules = [System.Collections.Generic.List[PSCustomObject]]::new()
